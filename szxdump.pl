@@ -108,12 +108,32 @@ sub decode_szx_block {
 ## Main
 ##
 
+my %machine_name = (
+    0  =>  'ZX Spectrum 16K',
+    1  =>  'ZX Spectrum 48K',
+    2  =>  'ZX Spectrum 128K',
+    3  =>  'ZX Spectrum PLUS2',
+    4  =>  'ZX Spectrum PLUS2A',
+    5  =>  'ZX Spectrum PLUS3',
+    6  =>  'ZX Spectrum PLUS3E',
+    7  =>  'Pentagon 128',
+    8  =>  'TC2048',
+    9  =>  'TC2068',
+    10  =>  'Scorpion',
+    11  =>  'SE',
+    12  =>  'Timex Sinclair 2068',
+    13  =>  'Pentagon 512',
+    14  =>  'Pentagon1024',
+    15  =>  'ZX Spectrum 48K (NTSC)',
+    16  =>  'ZX Spectrum 128K (Spanish)',
+);
+
 our( $opt_f, $opt_b, $opt_a );
 getopts( 'b:f:a:' );
 
 defined( $opt_f ) or
     die "
-usage: $0 <file.szx> [-b <n>] [-a <address>]
+usage: $0 -f <file.szx> [-b <n>] [-a <address>]
   The SZX file is mandatory. If no -b argument is used, a summary of the SZX file structure is output.
   If -b <n> is supplied, an hex dump of memory bank number <n> is output.
   If -b and -a are supplied, the memory dump will be based on address <address> instead of 0x0000
@@ -135,10 +155,12 @@ my $header = read_szx_header( $fh );
     die "Error: $szx_file is not a ZXST file\n";
 
 if ( not defined( $bank_to_dump ) ) {
-    printf "ZXST file, version %d.%d, machine ID: %d, flags: %d\nData blocks:\n",
-        map { $header->{ $_ } } qw( major_version minor_version machine_id flags );
+    printf "ZXST file, version %d.%d, flags: %d, machine ID: %d (%s)\n",
+        ( map { $header->{ $_ } } qw( major_version minor_version flags machine_id ) ),
+        $machine_name{ $header->{'machine_id'} };
 }
 
+print "Data blocks:\n";
 while ( not eof $fh ) {
     my $block = read_szx_next_block( $fh );
     if ( not defined( $bank_to_dump ) ) {
