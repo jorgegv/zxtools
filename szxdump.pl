@@ -8,6 +8,26 @@ use Compress::Zlib;
 use Data::Dumper;
 use Getopt::Std;
 
+my %machine_name = (
+    0  =>  'ZX Spectrum 16K',
+    1  =>  'ZX Spectrum 48K/+',
+    2  =>  'ZX Spectrum 128K',
+    3  =>  'ZX Spectrum +2',
+    4  =>  'ZX Spectrum +2A/+2B',
+    5  =>  'ZX Spectrum +3',
+    6  =>  'ZX Spectrum +3E',
+    7  =>  'Pentagon 128',
+    8  =>  'Timex Sinclair TC2048',
+    9  =>  'Timex Sinclair TC2068',
+    10  =>  'Scorpion ZS-256',
+    11  =>  'ZX Spectrum SE',
+    12  =>  'Timex Sinclair TS2068',
+    13  =>  'Pentagon 512',
+    14  =>  'Pentagon 1024',
+    15  =>  'ZX Spectrum 48K (NTSC)',
+    16  =>  'ZX Spectrum 128Ke',
+);
+
 my $block_decode_function;
 my $block_summary_function;
 
@@ -107,26 +127,6 @@ sub decode_szx_block {
 ##
 ## Main
 ##
-
-my %machine_name = (
-    0  =>  'ZX Spectrum 16K',
-    1  =>  'ZX Spectrum 48K',
-    2  =>  'ZX Spectrum 128K',
-    3  =>  'ZX Spectrum PLUS2',
-    4  =>  'ZX Spectrum PLUS2A',
-    5  =>  'ZX Spectrum PLUS3',
-    6  =>  'ZX Spectrum PLUS3E',
-    7  =>  'Pentagon 128',
-    8  =>  'TC2048',
-    9  =>  'TC2068',
-    10  =>  'Scorpion',
-    11  =>  'SE',
-    12  =>  'Timex Sinclair 2068',
-    13  =>  'Pentagon 512',
-    14  =>  'Pentagon1024',
-    15  =>  'ZX Spectrum 48K (NTSC)',
-    16  =>  'ZX Spectrum 128K (Spanish)',
-);
 
 our( $opt_f, $opt_b, $opt_a );
 getopts( 'b:f:a:' );
