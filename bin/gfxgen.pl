@@ -4,6 +4,9 @@ use strict;
 use warnings;
 use utf8;
 
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
 use Getopt::Long;
 use GD;
 use Data::Dumper;

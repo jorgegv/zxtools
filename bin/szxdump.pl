@@ -4,92 +4,17 @@ use utf8;
 use warnings;
 use strict;
 
-use Compress::Zlib;
-use Data::Dumper;
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
 use Getopt::Std;
 
-my %machine_name = (
-    0  =>  'ZX Spectrum 16K',
-    1  =>  'ZX Spectrum 48K/+',
-    2  =>  'ZX Spectrum 128K',
-    3  =>  'ZX Spectrum +2',
-    4  =>  'ZX Spectrum +2A/+2B',
-    5  =>  'ZX Spectrum +3',
-    6  =>  'ZX Spectrum +3E',
-    7  =>  'Pentagon 128',
-    8  =>  'Timex Sinclair TC2048',
-    9  =>  'Timex Sinclair TC2068',
-    10  =>  'Scorpion ZS-256',
-    11  =>  'ZX Spectrum SE',
-    12  =>  'Timex Sinclair TS2068',
-    13  =>  'Pentagon 512',
-    14  =>  'Pentagon 1024',
-    15  =>  'ZX Spectrum 48K (NTSC)',
-    16  =>  'ZX Spectrum 128Ke',
-);
-
-my $block_decode_function;
-my $block_summary_function;
-
-sub read_szx_header {
-    my $fh = shift;
-    my $data;
-    ( read( $fh, $data, 8 ) == 8 ) or
-        die "Unexpected EOF!\n";
-    my ( $magic, $major_version, $minor_version, $machine_id, $flags ) =
-        unpack( "A[4]CCCC", $data );
-    return {
-        magic		=> $magic,
-        major_version	=> $major_version,
-        minor_version	=> $minor_version,
-        machine_id	=> $machine_id,
-        flags		=> $flags,
-    };
-}
-
-sub read_szx_next_block {
-    my $fh = shift;
-    my $data;
-    ( read( $fh, $data, 8 ) == 8 ) or
-        die "Unexpected EOF!\n";
-    my ( $id, $size ) = unpack( "A[4]L", $data );
-    ( read( $fh, $data, $size ) == $size ) or
-        die "Unexpected EOF!\n";
-    return {
-        id	=> $id,
-        size	=> $size,
-        data	=> decode_szx_block( $id, $data ),
-    };
-}
-
-##
-## Decoding functions
-##
-
-sub decode_CRTR {
-    my $data = shift;
-    my ( $creator, $major, $minor ) = unpack( 'A[32]SS', $data );
-    return { creator => $creator, major => $major, minor => $minor };
-}
-
-sub decode_RAMP {
-    my $data = shift;
-    my ( $compressed, $pageno, @page_data ) = unpack( 'SCC*', $data );
-    my $compressed_data = pack( 'C*', @page_data );
-    my $tmp_compressed_data = $compressed_data;
-    my $zlib = inflateInit();
-    my $uncompressed_data = ( $compressed ? $zlib->inflate( \$tmp_compressed_data ) : $compressed_data );
-    return {
-        pageno => $pageno,
-        compressed => $compressed,
-        compressed_data => $compressed_data,
-        uncompressed_data => $uncompressed_data,
-    };
-}
+use SZXFile;
 
 ##
 ## Summary functions
 ##
+
 sub summary_RAMP {
     my $block = shift;
     my $data = $block->{'data'};
@@ -104,25 +29,11 @@ sub summary_CRTR {
     return sprintf( "Creator: %s, Major: %d, Minor: %d", map { $data->{ $_ } } qw( creator major minor ) );
 }
 
-## Dispatch tables
-
-$block_decode_function = {
-    'CRTR' => \&decode_CRTR,
-    'RAMP' => \&decode_RAMP,
-};
-
-$block_summary_function = {
+## Dispatch table
+my $block_summary_function = {
     'CRTR' => \&summary_CRTR,
     'RAMP' => \&summary_RAMP,
 };
-
-sub decode_szx_block {
-    my ( $id, $data ) = @_;
-    if ( defined( $block_decode_function->{ $id } ) ) {
-        return $block_decode_function->{ $id }( $data );
-    }
-    return undef;
-}
 
 ##
 ## Main
@@ -150,19 +61,19 @@ open( my $fh, "<", $szx_file ) or
     die "Could not open $szx_file for reading: $!\n";
 binmode $fh;
 
-my $header = read_szx_header( $fh );
+my $header = szx_read_header( $fh );
 ( $header->{'magic'} eq 'ZXST' ) or
     die "Error: $szx_file is not a ZXST file\n";
 
 if ( not defined( $bank_to_dump ) ) {
     printf "ZXST file, version %d.%d, flags: %d, machine ID: %d (%s)\n",
         ( map { $header->{ $_ } } qw( major_version minor_version flags machine_id ) ),
-        $machine_name{ $header->{'machine_id'} };
+        szx_get_machine_description( $header->{'machine_id'} );
 }
 
 print "Data blocks:\n";
 while ( not eof $fh ) {
-    my $block = read_szx_next_block( $fh );
+    my $block = szx_read_next_block( $fh );
     if ( not defined( $bank_to_dump ) ) {
         printf "[ Type: %-4s, Block Size: %d bytes ]\n", map { $block->{ $_ } } qw( id size );
         if ( defined( $block_summary_function->{ $block->{'id'} } ) ) {
