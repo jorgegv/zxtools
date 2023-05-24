@@ -5,6 +5,8 @@ use warnings;
 use utf8;
 
 use Getopt::Long;
+use GD;
+use Data::Dumper;
 
 sub show_usage {
     print <<EOF_USAGE
@@ -39,8 +41,40 @@ Options:
 
 EOF_USAGE
 ;
+    exit 1;
 }
 
+sub extract_zxgraphic_from_png {
+    my ( $png, $xpos, $ypos, $width, $height ) = @_;
+    my $graphic;
+
+    # ensure the requested zone is inside the image
+    ( ( $xpos + $width <= $png->width ) and ( $ypos + $height <= $png->height ) ) or
+        die "The specified image is outside the bounds of the source image\n";
+
+    # extract pixels from PNG - generates $graphic->{'pixels'}
+    # bidimencional array of pixel colors in 'RRGGBB' format, row-major form
+    foreach my $row ( $ypos .. ($ypos + $height - 1) ) {
+      foreach my $col ( $xpos .. ($xpos + $width - 1) ) {
+          $graphic->{'pixels'}[ $row ][ $col ] = sprintf( '%02x%02x%02x', $png->rgb( $png->getPixel( $col, $row ) ) );
+      }
+    }
+
+    # convert pixels to spectrum colors - modifies $graphic->{'pixels'}
+
+    # generate UDG data - generates $graphics->{'cells'}: bidi array of cells, each is { bytes => [ 8 bytes ], attr => value }
+
+    # return result
+    return $graphic;
+}
+
+#####################
+##
+## Main program
+##
+#####################
+
+# process cli options
 my ($opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height,
     $opt_mask, $opt_foreground, $opt_background, $opt_code_type, $opt_symbol_name,
     $opt_layout, $opt_gfx_type, $opt_extra_blank_col, $opt_extra_blank_row );
@@ -62,8 +96,57 @@ GetOptions(
 ) or show_usage;
 
 # check for mandatory options
-
 ( defined( $opt_input ) and defined( $opt_xpos ) and defined( $opt_ypos ) and 
   defined( $opt_height ) and defined( $opt_width ) and defined( $opt_code_type ) and
   defined( $opt_symbol_name ) and defined( $opt_layout ) and defined( $opt_gfx_type ) ) 
   or show_usage;
+
+# validate some options
+not ( $opt_width % 8 ) or
+    die "--width must be a multiple of 8\n";
+
+not ( $opt_height % 8 ) or
+    die "--height must be a multiple of 8\n";
+  
+if ( defined( $opt_mask ) ) {
+    ( $opt_mask =~ m/^[0-9a-f]{6}$/i ) or
+        die "--mask must have format RRGGBB\n";
+} else {
+    $opt_mask = 'FF0000';
+}
+
+if ( defined( $opt_background ) ) {
+    ( $opt_background =~ m/^[0-9a-f]{6}$/i ) or
+        die "--background must have format RRGGBB\n";
+} else {
+    $opt_background = '000000';
+}
+
+if ( defined( $opt_foreground ) ) {
+  ( $opt_foreground =~ m/^[0-9a-f]{6}$/i ) or
+    die "--foreground must have format RRGGBB\n";
+} else {
+    $opt_foreground = 'FFFFFF';
+}
+
+grep { m/$opt_code_type/i } qw( c asm ) or
+    die "--code-type must be one of 'c' or 'asm'\n";
+  
+( $opt_symbol_name =~ m/[A-Z][A-Z0-9_]+/i ) or
+    die "--symbol-name must be a valid symbol name\n";
+
+grep { m/$opt_layout/i } qw( scanlines rows columns ) or
+    die "--layout must be one of 'scanlines', 'rows' or 'columns'\n";
+  
+grep { m/$opt_gfx_type/i } qw( tile sprite ) or
+    die "--gfx-type must be one of 'tile' or 'sprite'\n";
+  
+# do what user wants
+
+my $png = GD::Image->newFromPng( $opt_input );
+defined( $png ) or
+    die "Could not load PNG file $opt_input\n";
+
+my $graphic = extract_zxgraphic_from_png( $png, $opt_xpos, $opt_ypos, $opt_width, $opt_height );
+
+print Dumper( $graphic );
