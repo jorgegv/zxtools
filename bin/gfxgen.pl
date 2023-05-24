@@ -11,6 +11,8 @@ use Getopt::Long;
 use GD;
 use Data::Dumper;
 
+use ZXGfx;
+
 sub show_usage {
     print <<EOF_USAGE
 gfxgen.pl - Create ZX Spectrum graphics C/ASM data definitions from a PNG file
@@ -45,30 +47,6 @@ Options:
 EOF_USAGE
 ;
     exit 1;
-}
-
-sub extract_zxgraphic_from_png {
-    my ( $png, $xpos, $ypos, $width, $height ) = @_;
-    my $graphic;
-
-    # ensure the requested zone is inside the image
-    ( ( $xpos + $width <= $png->width ) and ( $ypos + $height <= $png->height ) ) or
-        die "The specified image is outside the bounds of the source image\n";
-
-    # extract pixels from PNG - generates $graphic->{'pixels'}
-    # bidimencional array of pixel colors in 'RRGGBB' format, row-major form
-    foreach my $row ( $ypos .. ($ypos + $height - 1) ) {
-      foreach my $col ( $xpos .. ($xpos + $width - 1) ) {
-          $graphic->{'pixels'}[ $row ][ $col ] = sprintf( '%02x%02x%02x', $png->rgb( $png->getPixel( $col, $row ) ) );
-      }
-    }
-
-    # convert pixels to spectrum colors - modifies $graphic->{'pixels'}
-
-    # generate UDG data - generates $graphics->{'cells'}: bidi array of cells, each is { bytes => [ 8 bytes ], attr => value }
-
-    # return result
-    return $graphic;
 }
 
 #####################
@@ -144,12 +122,11 @@ grep { m/$opt_layout/i } qw( scanlines rows columns ) or
 grep { m/$opt_gfx_type/i } qw( tile sprite ) or
     die "--gfx-type must be one of 'tile' or 'sprite'\n";
   
-# do what user wants
+########################
+##
+### do what user wants
+##
 
-my $png = GD::Image->newFromPng( $opt_input );
-defined( $png ) or
-    die "Could not load PNG file $opt_input\n";
+my $gfx = zxgfx_extract_from_png( $opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height );
 
-my $graphic = extract_zxgraphic_from_png( $png, $opt_xpos, $opt_ypos, $opt_width, $opt_height );
-
-print Dumper( $graphic );
+print Dumper( $gfx );
