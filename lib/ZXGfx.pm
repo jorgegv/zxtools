@@ -34,23 +34,9 @@ my %zx_color_value = (
     'WHITE'	=> 7,
 );
 
-# Extracts pixel values (8 bytes, top-down) for a 8x8 cell out of a $gfx, as an arrayref of 8 values
-# We should have previously extracted the colors with zxgfx_extract_attr_from_cell() function and use the 
-# fg and bg colors from there.
-sub zxgfx_extract_tile_pixels_from_cell {
-    my ( $gfx, $xpos, $ypos, $fg, $bg ) = @_;
-}
-
-# Extracts pixel and mask values (8 bytes, top-down) for a 8x8 cell out of a $gfx, as:
-#     { pixels => [ ..pixel_bytes.. ], mask => [ ..mask_bytes.. ] }
-# fg, bg and mask color are normally supplied by the user
-sub zxgfx_extract_sprite_pixels_from_cell {
-    my ( $gfx, $xpos, $ypos, $fg, $bg, $mask ) = @_;
-}
-
 # Extracts attribute values for a 8x8 cell out of PNG data, in RGB and text form
 # returns: fg and bg RGB values, and also attribute text representation and integer value:
-#   { fg => <fg_color>, bg => <bg_color>, attr_text => 'INK_xxx | PAPER_yyy | BRIGHT', attr_value => zzz, all_colors => [ ... ] }
+#   { fg => <fg_color>, bg => <bg_color>, as_text => 'INK_xxx | PAPER_yyy | BRIGHT', as_integer => zzz, all_colors => [ ... ] }
 sub zxgfx_extract_attr_from_cell {
     my ( $gfx, $xpos, $ypos ) = @_;
 
@@ -87,8 +73,8 @@ sub zxgfx_extract_attr_from_cell {
     return {
         'bg'		=> $bg,			# RRGGBB
         'fg'		=> $fg,			# RRGGBB
-        'attr_text'	=> $attr_text,		# 'INK_xxxx | PAPER_yyyy | BRIGHT'
-        'attr_value'	=> $attr_value,		# integer
+        'as_text'	=> $attr_text,		# 'INK_xxxx | PAPER_yyyy | BRIGHT'
+        'as_integer'	=> $attr_value,		# integer
         'all_colors'	=> \@all_colors,	# list of all identified colors
     };
 }
@@ -164,18 +150,111 @@ sub zxgfx_extract_from_png {
     return $gfx;
 }
 
+# Extracts pixel values (8 bytes, top-down) for a 8x8 cell out of a $gfx, as an arrayref of 8 values
+# We should have previously extracted the colors with zxgfx_extract_attr_from_cell() function and use the 
+# fg and bg colors from there.
+sub zxgfx_extract_tile_pixels_from_cell {
+    my ( $gfx, $xpos, $ypos, $fg, $bg ) = @_;
+    my @bytes;
+    foreach my $row ( 0 .. 7 ) {
+        my $byte = 0;
+        foreach my $col ( 0 .. 7 ) {
+            my $color = $gfx->{'pixels'}[ $ypos + $row ][ $xpos + $col ];
+            if ( $color eq $fg ) {
+                $byte += 1 << ( 7 - $col );	# add fg bit
+            } elsif ( $color eq $bg ) {
+                $byte += 0;			# add bg bit
+            } else {
+                warn sprintf("** Unexpected color $color found at (%d,%d)!\n", $xpos + $col, $ypos + $row );
+            }
+        }
+        push @bytes, $byte;
+    }
+    return \@bytes;
+}
+
 # Processes a $gfx and adds tile data:
 #     $gfx->{'cells'}[<rows>][<cols>] = { 'bytes' => [ <pixel_bytes> ], 'attr' => <attribute> } - for each 8x8 cell
 # in row-major form
 sub zxgfx_extract_tile_cells {
     my $gfx = shift;
+    foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+        foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+            my $attr = zxgfx_extract_attr_from_cell( $gfx, $col * 8, $row * 8 );
+            my $pixels = zxgfx_extract_tile_pixels_from_cell( $gfx, $col * 8, $row * 8, $attr->{'fg'}, $attr->{'bg'} );
+            $gfx->{'cells'}[ $row ][ $col ] = {
+                bytes	=> $pixels,
+                attr	=> $attr,
+            };
+        }
+    }
+}
+
+# Extracts pixel and mask values (8 bytes, top-down) for a 8x8 cell out of a $gfx, as:
+#     { pixels => [ ..pixel_bytes.. ], mask => [ ..mask_bytes.. ] }
+# fg, bg and mask color are normally supplied by the user
+sub zxgfx_extract_sprite_pixels_from_cell {
+    my ( $gfx, $xpos, $ypos, $fg, $bg, $mask ) = @_;
+    my @bytes;
+    my @masks;
+    foreach my $row ( 0 .. 7 ) {
+        my $byte = 0;
+        my $mask = 0;
+        foreach my $col ( 0 .. 7 ) {
+            my $color = $gfx->{'pixels'}[ $ypos + $row ][ $xpos + $col ];
+            if ( $color eq $fg ) {
+                $byte += 1 << ( 7 - $col );	# add fg bit to pixels
+            } elsif ( $color eq $bg ) {
+                $byte += 0;			# add bg bit to pixels
+            } elsif ( $color eq $mask ) {
+                $mask += 1 << ( 7 - $col );	# add bit to mask
+            } else {
+                warn sprintf("** Unexpected color $color found at (%d,%d)!\n", $xpos + $col, $ypos + $row );
+            }
+        }
+        push @bytes, $byte;
+        push @masks, $mask;
+    }
+    return ( \@bytes, \@masks );
 }
 
 # Processes a $gfx and adds sprite data:
-#     $gfx->{'cells'}[<rows>][<cols>] = { 'bytes' => [ <pixel_bytes> ], 'mask' => <mask_bytes> } - for each 8x8 cell
+#     $gfx->{'cells'}[<rows>][<cols>] = { 'bytes' => [ <pixel_bytes> ], 'masks' => <mask_bytes> } - for each 8x8 cell
 # in row-major form
 sub zxgfx_extract_sprite_cells {
-    my $gfx = shift;
+    my ( $gfx, $fg, $bg, $mask ) = @_;
+    foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+        foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+            my ( $pixels, $masks ) = zxgfx_extract_sprite_pixels_from_cell( $gfx, $col * 8, $row * 8, $fg, $bg, $mask );
+            $gfx->{'cells'}[ $row ][ $col ] = {
+                bytes	=> $pixels,
+                masks	=> $masks,
+            };
+        }
+    }
 }
+
+# get gfx dimensions in pixels and cells
+sub zxgfx_get_width_pixels {
+    my $gfx = shift;
+    return scalar( @{ $gfx->{'pixels'}[0] } );
+}
+
+sub zxgfx_get_height_pixels {
+    my $gfx = shift;
+    return scalar( @{ $gfx->{'pixels'} } );
+}
+
+sub zxgfx_get_width_cells {
+    my $gfx = shift;
+    return zxgfx_get_width_pixels( $gfx ) / 8;
+}
+
+sub zxgfx_get_height_cells {
+    my $gfx = shift;
+    return zxgfx_get_height_pixels( $gfx ) / 8;
+}
+
+
 
 1;

@@ -49,7 +49,12 @@ EOF_USAGE
     exit 1;
 }
 
-# CLI option processing
+#############################
+##
+## CLI option processing
+##
+#############################
+
 my ($opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height,
     $opt_mask, $opt_foreground, $opt_background, $opt_code_type, $opt_symbol_name,
     $opt_layout, $opt_gfx_type, $opt_extra_blank_col, $opt_extra_blank_row );
@@ -62,12 +67,12 @@ sub process_cli_options {
         'width=i'		=> \$opt_width,
         'height=i'		=> \$opt_height,
         'mask:s'		=> \$opt_mask,
-        'foreground:s'	=> \$opt_foreground,
-        'background:s'	=> \$opt_background,
-        'code-type=s'	=> \$opt_code_type,
-        'symbol-name=s'	=> \$opt_symbol_name,
+        'foreground:s'		=> \$opt_foreground,
+        'background:s'		=> \$opt_background,
+        'code-type=s'		=> \$opt_code_type,
+        'symbol-name=s'		=> \$opt_symbol_name,
         'layout=s'		=> \$opt_layout,
-        'gfx-type=s'	=> \$opt_gfx_type,
+        'gfx-type=s'		=> \$opt_gfx_type,
         'extra-blank-col'	=> \$opt_extra_blank_col,
         'extra-blank-row'	=> \$opt_extra_blank_row,
     ) or show_usage;
@@ -108,17 +113,127 @@ sub process_cli_options {
 
     grep { m/$opt_code_type/i } qw( c asm ) or
         die "--code-type must be one of 'c' or 'asm'\n";
+    $opt_code_type = lc( $opt_code_type );
       
     ( $opt_symbol_name =~ m/[A-Z][A-Z0-9_]+/i ) or
         die "--symbol-name must be a valid symbol name\n";
 
     grep { m/$opt_layout/i } qw( scanlines rows columns ) or
         die "--layout must be one of 'scanlines', 'rows' or 'columns'\n";
-      
+    $opt_layout = lc( $opt_layout );
+
     grep { m/$opt_gfx_type/i } qw( tile sprite ) or
         die "--gfx-type must be one of 'tile' or 'sprite'\n";
-      
+    $opt_gfx_type = lc( $opt_gfx_type );
+
 }
+
+######################
+##
+## Output functions
+##
+######################
+
+sub byte2bin {
+    my $byte = shift;
+    my $bin;
+    foreach my $bit ( 0 .. 7 ) {
+        $bin .= ( ( $byte & ( 1 << ( 7 - $bit ) ) ) ? '#' : '-' );
+    }
+    return $bin;
+}
+
+## tile output
+
+my %tile_output_fn = (
+    'c'		=> \&output_tiles_c,
+    'asm'	=> \&output_tiles_asm,
+);
+
+sub output_tiles {
+    my $gfx = shift;
+    $tile_output_fn{ $opt_code_type }( $gfx );
+}
+
+sub output_tiles_c {
+    my $gfx = shift;
+
+    # pixels: header
+    printf "// tile '%s' definition\n// pixel data\n", $opt_symbol_name;
+    printf "uint8_t %s_pixels[] = {\n", $opt_symbol_name;
+
+    # pixels: data
+    if ( $opt_layout eq 'columns' ) {
+        foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+            foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+                print join("\n", map {
+                    sprintf "\t0x%02x,\t// row:%d,col:%d - %%%s", $_, $row, $col, byte2bin( $_ )
+                } @{ $gfx->{'cells'}[ $row ][ $col ]{'bytes'} } );
+                print "\n";
+            }
+        }
+    }
+
+    # pixels: footer
+    print "};\n";
+
+    # attr: header
+    printf "uint8_t %s_attr[] = {\n", $opt_symbol_name;
+    
+    # attr: data
+    # column-major order for 'columns' mode, row-major order for 'rows' and 'scanlines' modes
+    if ( $opt_layout eq 'columns' ) {
+        foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+            foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+                printf "\t%s,\t// row:%d,col:%d,attr:%s\n",
+                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_text'},
+                    $row,$col,
+                    byte2bin( $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'} );
+            }
+        }
+    }
+    if ( ( $opt_layout eq 'rows' ) or ( $opt_layout eq 'scanlines' ) ) {
+        foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+            foreach my $col (0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+                printf "\t%s,\t// row:%d,col:%d,attr:%s\n",
+                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_text'},
+                    $row,$col,
+                    byte2bin( $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'} );
+            }
+        }
+    }
+    
+    # attr: footer
+    print "};\n";
+    print "\n";
+
+}
+
+sub output_tiles_asm {
+    my $gfx = shift;
+}
+
+## sprite output
+
+
+my %sprite_output_fn = (
+    'c'		=> \&output_sprite_c,
+    'asm'	=> \&output_sprite_asm,
+);
+
+sub output_sprite {
+    my $gfx = shift;
+    $sprite_output_fn{ $opt_code_type }( $gfx );
+}
+
+sub output_sprite_c {
+    my $gfx = shift;
+}
+
+sub output_sprite_asm {
+    my $gfx = shift;
+}
+
 
 #####################
 ##
@@ -133,12 +248,14 @@ process_cli_options;
 my $gfx = zxgfx_extract_from_png( $opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height );
 
 ## create the data for the 8x8 cells according to the type of data requested, and output the generated code
-if ( lc( $opt_gfx_type ) eq 'tile' ) {
+if ( $opt_gfx_type eq 'tile' ) {
     zxgfx_extract_tile_cells( $gfx );
     output_tiles( $gfx );
-} elsif ( lc( $opt_gfx_type ) eq 'sprite' ) {
-    zxgfx_extract_sprite_cells( $gfx );
+} elsif ( $opt_gfx_type eq 'sprite' ) {
+    zxgfx_extract_sprite_cells( $gfx, $opt_foreground, $opt_background, $opt_mask );
     output_sprite( $gfx );
 } else {
     die "Unknown --gfx-type value ($opt_gfx_type), should not happen!\n";
 }
+
+#print Dumper( $gfx );
