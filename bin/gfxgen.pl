@@ -49,91 +49,96 @@ EOF_USAGE
     exit 1;
 }
 
+# CLI option processing
+my ($opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height,
+    $opt_mask, $opt_foreground, $opt_background, $opt_code_type, $opt_symbol_name,
+    $opt_layout, $opt_gfx_type, $opt_extra_blank_col, $opt_extra_blank_row );
+
+sub process_cli_options {
+    GetOptions(
+        'input=s'		=> \$opt_input,
+        'xpos=i'		=> \$opt_xpos,
+        'ypos=i'		=> \$opt_ypos,
+        'width=i'		=> \$opt_width,
+        'height=i'		=> \$opt_height,
+        'mask:s'		=> \$opt_mask,
+        'foreground:s'	=> \$opt_foreground,
+        'background:s'	=> \$opt_background,
+        'code-type=s'	=> \$opt_code_type,
+        'symbol-name=s'	=> \$opt_symbol_name,
+        'layout=s'		=> \$opt_layout,
+        'gfx-type=s'	=> \$opt_gfx_type,
+        'extra-blank-col'	=> \$opt_extra_blank_col,
+        'extra-blank-row'	=> \$opt_extra_blank_row,
+    ) or show_usage;
+
+    # check for mandatory options
+    ( defined( $opt_input ) and defined( $opt_xpos ) and defined( $opt_ypos ) and 
+      defined( $opt_height ) and defined( $opt_width ) and defined( $opt_code_type ) and
+      defined( $opt_symbol_name ) and defined( $opt_layout ) and defined( $opt_gfx_type ) ) 
+      or show_usage;
+
+    # validate some options
+    not ( $opt_width % 8 ) or
+        die "--width must be a multiple of 8\n";
+
+    not ( $opt_height % 8 ) or
+        die "--height must be a multiple of 8\n";
+      
+    if ( defined( $opt_mask ) ) {
+        ( $opt_mask =~ m/^[0-9a-f]{6}$/i ) or
+            die "--mask must have format RRGGBB\n";
+    } else {
+        $opt_mask = 'FF0000';
+    }
+
+    if ( defined( $opt_background ) ) {
+        ( $opt_background =~ m/^[0-9a-f]{6}$/i ) or
+            die "--background must have format RRGGBB\n";
+    } else {
+        $opt_background = '000000';
+    }
+
+    if ( defined( $opt_foreground ) ) {
+      ( $opt_foreground =~ m/^[0-9a-f]{6}$/i ) or
+        die "--foreground must have format RRGGBB\n";
+    } else {
+        $opt_foreground = 'FFFFFF';
+    }
+
+    grep { m/$opt_code_type/i } qw( c asm ) or
+        die "--code-type must be one of 'c' or 'asm'\n";
+      
+    ( $opt_symbol_name =~ m/[A-Z][A-Z0-9_]+/i ) or
+        die "--symbol-name must be a valid symbol name\n";
+
+    grep { m/$opt_layout/i } qw( scanlines rows columns ) or
+        die "--layout must be one of 'scanlines', 'rows' or 'columns'\n";
+      
+    grep { m/$opt_gfx_type/i } qw( tile sprite ) or
+        die "--gfx-type must be one of 'tile' or 'sprite'\n";
+      
+}
+
 #####################
 ##
 ## Main program
 ##
 #####################
 
-# process cli options
-my ($opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height,
-    $opt_mask, $opt_foreground, $opt_background, $opt_code_type, $opt_symbol_name,
-    $opt_layout, $opt_gfx_type, $opt_extra_blank_col, $opt_extra_blank_row );
-GetOptions(
-    'input=s'		=> \$opt_input,
-    'xpos=i'		=> \$opt_xpos,
-    'ypos=i'		=> \$opt_ypos,
-    'width=i'		=> \$opt_width,
-    'height=i'		=> \$opt_height,
-    'mask:s'		=> \$opt_mask,
-    'foreground:s'	=> \$opt_foreground,
-    'background:s'	=> \$opt_background,
-    'code-type=s'	=> \$opt_code_type,
-    'symbol-name=s'	=> \$opt_symbol_name,
-    'layout=s'		=> \$opt_layout,
-    'gfx-type=s'	=> \$opt_gfx_type,
-    'extra-blank-col'	=> \$opt_extra_blank_col,
-    'extra-blank-row'	=> \$opt_extra_blank_row,
-) or show_usage;
+## process options
+process_cli_options;
 
-# check for mandatory options
-( defined( $opt_input ) and defined( $opt_xpos ) and defined( $opt_ypos ) and 
-  defined( $opt_height ) and defined( $opt_width ) and defined( $opt_code_type ) and
-  defined( $opt_symbol_name ) and defined( $opt_layout ) and defined( $opt_gfx_type ) ) 
-  or show_usage;
-
-# validate some options
-not ( $opt_width % 8 ) or
-    die "--width must be a multiple of 8\n";
-
-not ( $opt_height % 8 ) or
-    die "--height must be a multiple of 8\n";
-  
-if ( defined( $opt_mask ) ) {
-    ( $opt_mask =~ m/^[0-9a-f]{6}$/i ) or
-        die "--mask must have format RRGGBB\n";
-} else {
-    $opt_mask = 'FF0000';
-}
-
-if ( defined( $opt_background ) ) {
-    ( $opt_background =~ m/^[0-9a-f]{6}$/i ) or
-        die "--background must have format RRGGBB\n";
-} else {
-    $opt_background = '000000';
-}
-
-if ( defined( $opt_foreground ) ) {
-  ( $opt_foreground =~ m/^[0-9a-f]{6}$/i ) or
-    die "--foreground must have format RRGGBB\n";
-} else {
-    $opt_foreground = 'FFFFFF';
-}
-
-grep { m/$opt_code_type/i } qw( c asm ) or
-    die "--code-type must be one of 'c' or 'asm'\n";
-  
-( $opt_symbol_name =~ m/[A-Z][A-Z0-9_]+/i ) or
-    die "--symbol-name must be a valid symbol name\n";
-
-grep { m/$opt_layout/i } qw( scanlines rows columns ) or
-    die "--layout must be one of 'scanlines', 'rows' or 'columns'\n";
-  
-grep { m/$opt_gfx_type/i } qw( tile sprite ) or
-    die "--gfx-type must be one of 'tile' or 'sprite'\n";
-  
-##
-### do what user wants
-##
-
+## import the PNG file, extract the region indicated and convert it into ZX color space
 my $gfx = zxgfx_extract_from_png( $opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height );
 
+## create the data for the 8x8 cells according to the type of data requested, and output the generated code
 if ( lc( $opt_gfx_type ) eq 'tile' ) {
     zxgfx_extract_tile_cells( $gfx );
-}
-
-if ( lc( $opt_gfx_type ) eq 'sprite' ) {
+    output_tiles( $gfx );
+} elsif ( lc( $opt_gfx_type ) eq 'sprite' ) {
     zxgfx_extract_sprite_cells( $gfx );
+    output_sprite( $gfx );
+} else {
+    die "Unknown --gfx-type value ($opt_gfx_type), should not happen!\n";
 }
-
-print Dumper( $gfx );
