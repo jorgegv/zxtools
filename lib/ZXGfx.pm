@@ -34,26 +34,31 @@ my %zx_color_value = (
     'WHITE'	=> 7,
 );
 
-# Extracts pixel values (8 bytes, top-down) for a 8x8 cell out of PNG data, as an arrayref of 8 values
+# Extracts pixel values (8 bytes, top-down) for a 8x8 cell out of a $gfx, as an arrayref of 8 values
 # We should have previously extracted the colors with zxgfx_extract_attr_from_cell() function and use the 
-sub zxgfx_extract_bytes_from_cell {
+# fg and bg colors from there.
+sub zxgfx_extract_tile_pixels_from_cell {
+    my ( $gfx, $xpos, $ypos, $fg, $bg ) = @_;
+}
+
+# Extracts pixel and mask values (8 bytes, top-down) for a 8x8 cell out of a $gfx, as:
+#     { pixels => [ ..pixel_bytes.. ], mask => [ ..mask_bytes.. ] }
+# fg, bg and mask color are normally supplied by the user
+sub zxgfx_extract_sprite_pixels_from_cell {
     my ( $gfx, $xpos, $ypos, $fg, $bg, $mask ) = @_;
 }
 
 # Extracts attribute values for a 8x8 cell out of PNG data, in RGB and text form
 # returns: fg and bg RGB values, and also attribute text representation and integer value:
 #   { fg => <fg_color>, bg => <bg_color>, attr_text => 'INK_xxx | PAPER_yyy | BRIGHT', attr_value => zzz, all_colors => [ ... ] }
-# if $ignore_color is supplied, it is ignored when building the histogram. This is useful for ignoring the mask color.
 sub zxgfx_extract_attr_from_cell {
-    my ( $gfx, $xpos, $ypos, $ignore_color ) = @_;
+    my ( $gfx, $xpos, $ypos ) = @_;
 
     # create a color histogram for the whole cell
     my %histogram;
     foreach my $x ( $xpos .. ( $xpos + 7 ) ) {
         foreach my $y ( $ypos .. ( $ypos + 7 ) ) {
             my $pixel_color = $gfx->{'pixels'}[$y][$x];
-            # ignore this color if it should be ignored
-            next if ( defined( $ignore_color ) and ( $pixel_color eq $ignore_color ) );
             $histogram{$pixel_color}++;
         }
     }
@@ -128,7 +133,6 @@ sub zxgfx_convert_to_zx_colors {
 # returned structure):
 #
 #   $gfx->{'pixels'}[<height>][<width>] = '<RRGGBB>' - for each pixel
-#   $gfx->{'cells'}[<rows>][<cols>] = { 'bytes' => [ bytes ], 'attr' => <attribute> } - for each 8x8 cell
 #
 # The colors in 'pixels' are converted by approximation to ZX colors
 
@@ -156,10 +160,22 @@ sub zxgfx_extract_from_png {
     # convert pixels to spectrum colors - modifies $gfx->{'pixels'}
     zxgfx_convert_to_zx_colors( $gfx );
 
-    # generate UDG data - generates $gfx->{'cells'}: bidi array of cells, each is { bytes => [ 8 bytes ], attr => value }
-
     # return result
     return $gfx;
+}
+
+# Processes a $gfx and adds tile data:
+#     $gfx->{'cells'}[<rows>][<cols>] = { 'bytes' => [ <pixel_bytes> ], 'attr' => <attribute> } - for each 8x8 cell
+# in row-major form
+sub zxgfx_extract_tile_cells {
+    my $gfx = shift;
+}
+
+# Processes a $gfx and adds sprite data:
+#     $gfx->{'cells'}[<rows>][<cols>] = { 'bytes' => [ <pixel_bytes> ], 'mask' => <mask_bytes> } - for each 8x8 cell
+# in row-major form
+sub zxgfx_extract_sprite_cells {
+    my $gfx = shift;
 }
 
 1;

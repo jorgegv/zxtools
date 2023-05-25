@@ -122,11 +122,18 @@ grep { m/$opt_layout/i } qw( scanlines rows columns ) or
 grep { m/$opt_gfx_type/i } qw( tile sprite ) or
     die "--gfx-type must be one of 'tile' or 'sprite'\n";
   
-########################
 ##
 ### do what user wants
 ##
 
 my $gfx = zxgfx_extract_from_png( $opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height );
+
+if ( lc( $opt_gfx_type ) eq 'tile' ) {
+    zxgfx_extract_tile_cells( $gfx );
+}
+
+if ( lc( $opt_gfx_type ) eq 'sprite' ) {
+    zxgfx_extract_sprite_cells( $gfx );
+}
 
 print Dumper( $gfx );
