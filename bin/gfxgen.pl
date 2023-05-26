@@ -138,7 +138,16 @@ sub byte2bin {
     my $byte = shift;
     my $bin;
     foreach my $bit ( 0 .. 7 ) {
-        $bin .= ( ( $byte & ( 1 << ( 7 - $bit ) ) ) ? '#' : '-' );
+        $bin .= ( ( $byte & ( 1 << ( 7 - $bit ) ) ) ? '1' : '0' );
+    }
+    return $bin;
+}
+
+sub byte2graph {
+    my $byte = shift;
+    my $bin;
+    foreach my $bit ( 0 .. 7 ) {
+        $bin .= ( ( $byte & ( 1 << ( 7 - $bit ) ) ) ? '##' : '..' );
     }
     return $bin;
 }
@@ -165,14 +174,42 @@ sub output_tiles_c {
     # pixels: data
     if ( $opt_layout eq 'columns' ) {
         foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+            printf "\t// rows: 0-%d, col: %d\n", (zxgfx_get_height_cells( $gfx ) - 1), $col;
             foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
                 print join("\n", map {
-                    sprintf "\t0x%02x,\t// row:%d,col:%d - %%%s", $_, $row, $col, byte2bin( $_ )
+                    sprintf "\t0x%02x,\t\t// pix: %s", $_, byte2graph( $_ )
                 } @{ $gfx->{'cells'}[ $row ][ $col ]{'bytes'} } );
                 print "\n";
             }
+            print "\n";
         }
     }
+    if ( $opt_layout eq 'rows' ) {
+        foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+            foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+                printf "\t// row: %d, col: %d\n", $row, $col;
+                print join("\n", map {
+                    sprintf "\t0x%02x,\t\t// pix: %s", $_, byte2graph( $_ )
+                } @{ $gfx->{'cells'}[ $row ][ $col ]{'bytes'} } );
+                print "\n\n";
+            }
+        }
+    }
+    if ( $opt_layout eq 'scanlines' ) {
+        foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+            printf "\t// row: %d, cols: 0-%d\n", $row, (zxgfx_get_width_cells( $gfx ) - 1);
+            foreach my $scan ( 0 .. 7 ) {
+                my @scan_bytes = map {
+                    $gfx->{'cells'}[ $row ][ $_ ]{'bytes'}[ $scan ];
+                } ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) );
+                printf "\t%s,\t\t// pix: %s\n",
+                    join( ", ", map { sprintf( "0x%02x", $_ ) } @scan_bytes ),
+                    join( '', map { byte2graph( $_ ) } @scan_bytes );
+            }
+            print "\n";
+        }
+    }
+
 
     # pixels: footer
     print "};\n";
@@ -185,7 +222,7 @@ sub output_tiles_c {
     if ( $opt_layout eq 'columns' ) {
         foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
             foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
-                printf "\t%s,\t// row:%d,col:%d,attr:%s\n",
+                printf "\t%s,\t// row:%2d, col:%2d, attr: %s\n",
                     $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_text'},
                     $row,$col,
                     byte2bin( $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'} );
@@ -195,7 +232,7 @@ sub output_tiles_c {
     if ( ( $opt_layout eq 'rows' ) or ( $opt_layout eq 'scanlines' ) ) {
         foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
             foreach my $col (0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
-                printf "\t%s,\t// row:%d,col:%d,attr:%s\n",
+                printf "\t%s,\t// row:%2d, col:%2d, attr: %sb\n",
                     $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_text'},
                     $row,$col,
                     byte2bin( $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'} );
@@ -211,6 +248,87 @@ sub output_tiles_c {
 
 sub output_tiles_asm {
     my $gfx = shift;
+
+    # pixels: header
+    print ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n";
+    printf ";; tile '%s' definition\n;; pixel data\n\n", $opt_symbol_name;
+    printf "PUBLIC %s_pixels\n", $opt_symbol_name;
+    printf "%s_pixels:\n", $opt_symbol_name;
+
+    # pixels: data
+    if ( $opt_layout eq 'columns' ) {
+        foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+            printf "\t;; rows: 0-%d, col: %d\n", (zxgfx_get_height_cells( $gfx ) - 1), $col;
+            foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+                print join("\n", map {
+                    sprintf "\tdb\t\$%02x\t\t;; pix: %s", $_, byte2graph( $_ )
+                } @{ $gfx->{'cells'}[ $row ][ $col ]{'bytes'} } );
+                print "\n";
+            }
+            print "\n";
+        }
+    }
+    if ( $opt_layout eq 'rows' ) {
+        foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+            foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+                printf "\t// row: %d, col: %d\n", $row, $col;
+                print join("\n", map {
+                    sprintf "\tdb\t\$%02x\t\t;; pix: %s", $_, byte2graph( $_ )
+                } @{ $gfx->{'cells'}[ $row ][ $col ]{'bytes'} } );
+                print "\n\n";
+            }
+        }
+    }
+    if ( $opt_layout eq 'scanlines' ) {
+        foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+            printf "\t// row: %d, cols: 0-%d\n", $row, (zxgfx_get_width_cells( $gfx ) - 1);
+            foreach my $scan ( 0 .. 7 ) {
+                my @scan_bytes = map {
+                    $gfx->{'cells'}[ $row ][ $_ ]{'bytes'}[ $scan ];
+                } ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) );
+                printf "\tdb\t%s\t\t;; pix: %s\n",
+                    join( ",", map { sprintf( "\$%02x", $_ ) } @scan_bytes ),
+                    join( '', map { byte2graph( $_ ) } @scan_bytes );
+            }
+            print "\n";
+        }
+    }
+
+    # pixels: footer
+    # nothing special needed
+
+    # attr: header
+    print ";; attribute data\n";
+    printf "PUBLIC %s_attr\n", $opt_symbol_name;
+    printf "%s_attr:\n", $opt_symbol_name;
+    
+    # attr: data
+    # column-major order for 'columns' mode, row-major order for 'rows' and 'scanlines' modes
+    if ( $opt_layout eq 'columns' ) {
+        foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+            foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+                printf "\tdb\t\$%02x\t\t;; row:%2d, col:%2d, attr: %s\n",
+                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'},
+                    $row,$col,
+                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_text'};
+            }
+        }
+    }
+    if ( ( $opt_layout eq 'rows' ) or ( $opt_layout eq 'scanlines' ) ) {
+        foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+            foreach my $col (0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+                printf "\tdb\t\$%02x,\t\t;; row:%2d, col:%2d, attr: %s\n",
+                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'},
+                    $row,$col,
+                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_text'};
+            }
+        }
+    }
+    
+    # attr: footer
+    print ";;;;;;\n";
+    print "\n";
+
 }
 
 ## sprite output
