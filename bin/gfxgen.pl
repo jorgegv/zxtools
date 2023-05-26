@@ -42,8 +42,8 @@ Options:
     -l, --layout <scanlines,rows,columns>
     -g, --gfx-type <tile,sprite>
     -p, --preshift <1|2|4>
-        --extra-right-col - generate empty extra right column (default: no)
-        --extra-bottom-row - generate SP1 empty extra bottom row (default: no)
+        --extra-right-col - generate sprite extra empty right column (default: no)
+        --extra-bottom-row - generate sprite extra empty bottom row, SP1 style (default: no)
 
 EOF_USAGE
 ;
@@ -140,6 +140,14 @@ sub process_cli_options {
             die "--preshift value must be 1, 2 or 4\n";
         }
     }
+
+    if ( $opt_gfx_type ne 'sprite' ) {
+        defined( $opt_extra_right_col ) and
+            die "--extra-right-col is only valid in sprite mode\n";
+        defined( $opt_extra_bottom_row ) and
+            die "--extra-bottom-row is only valid in sprite mode\n";
+    }
+
 }
 
 ######################
