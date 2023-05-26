@@ -121,13 +121,19 @@ sub process_cli_options {
     ( $opt_symbol_name =~ m/[A-Z][A-Z0-9_]+/i ) or
         die "--symbol-name must be a valid symbol name\n";
 
-    grep { m/$opt_layout/i } qw( scanlines rows columns ) or
-        die "--layout must be one of 'scanlines', 'rows' or 'columns'\n";
-    $opt_layout = lc( $opt_layout );
-
     grep { m/$opt_gfx_type/i } qw( tile sprite ) or
         die "--gfx-type must be one of 'tile' or 'sprite'\n";
     $opt_gfx_type = lc( $opt_gfx_type );
+
+    if ( $opt_gfx_type eq 'tile' ) {
+        grep { m/$opt_layout/i } qw( scanlines rows columns ) or
+            die "--layout must be one of 'scanlines', 'rows' or 'columns' in tile mode\n";
+    }
+    if ( $opt_gfx_type eq 'sprite' ) {
+        grep { m/$opt_layout/i } qw( columns ) or
+            die "--layout can only be 'columns' in sprite mode\n";
+    }
+    $opt_layout = lc( $opt_layout );
 
     if ( defined( $opt_preshift ) ) {
         if ( not $opt_preshift =~ m/^[124]$/ ) {
@@ -373,7 +379,6 @@ sub mix_mask_and_pixel {
 sub output_sprite_c {
     my $gfx = shift;
 
-    # WIP
     # pixels: header
     printf "// sprite '%s' definition\n// pixel data\n", $opt_symbol_name;
     if ( $opt_extra_bottom_row ) {
@@ -416,33 +421,6 @@ sub output_sprite_c {
         }
     }
 
-    if ( $opt_layout eq 'rows' ) {
-        foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
-            foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
-                printf "\t// row: %d, col: %d\n", $row, $col;
-                print join("\n", map {
-                    sprintf "\t0x%02x,\t\t// pix: %s", $_, byte2graph( $_ )
-                } @{ $gfx->{'cells'}[ $row ][ $col ]{'bytes'} } );
-                print "\n\n";
-            }
-        }
-    }
-    if ( $opt_layout eq 'scanlines' ) {
-        foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
-            printf "\t// row: %d, cols: 0-%d\n", $row, (zxgfx_get_width_cells( $gfx ) - 1);
-            foreach my $scan ( 0 .. 7 ) {
-                my @scan_bytes = map {
-                    $gfx->{'cells'}[ $row ][ $_ ]{'bytes'}[ $scan ];
-                } ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) );
-                printf "\t%s,\t\t// pix: %s\n",
-                    join( ", ", map { sprintf( "0x%02x", $_ ) } @scan_bytes ),
-                    join( '', map { byte2graph( $_ ) } @scan_bytes );
-            }
-            print "\n";
-        }
-    }
-
-
     # pixels: footer
     print "};\n";
 
@@ -450,6 +428,52 @@ sub output_sprite_c {
 
 sub output_sprite_asm {
     my $gfx = shift;
+
+    # pixels: header
+    printf ";; sprite '%s' definition\n;; pixel data\n", $opt_symbol_name;
+    if ( $opt_extra_bottom_row ) {
+        printf ";; with extra blank bottom row\n";
+    }
+    if ( $opt_extra_right_col ) {
+        printf ";; with extra blank right column\n";
+    }
+    
+    printf "PUBLIC %s_pixels\n", $opt_symbol_name;
+    printf "%s_pixels:\n", $opt_symbol_name;
+
+    # pixels: data
+    if ( $opt_layout eq 'columns' ) {
+        foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+            printf "\t;; rows: 0-%d, col: %d\n", (zxgfx_get_height_cells( $gfx ) - 1), $col;
+            foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+                print join("\n", map {
+                    sprintf "\tdb\t\$%02x,\$%02x\t\t;; mask: %s   pix: %s",
+                        $_->[0], $_>[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
+                } mix_mask_and_pixel( $gfx->{'cells'}[ $row ][ $col ]{'masks'}, $gfx->{'cells'}[ $row ][ $col ]{'bytes'} ) );
+                print "\n";
+            }
+            if ( $opt_extra_bottom_row ) {
+                print join("\n", map {
+                    sprintf "\tdb\t\$%02x,\$%02x\t\t;; mask: %s   pix: %s",
+                        $_->[0], $_->[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
+                } ( ( [ 255, 0] ) x 8 ) );
+                print "\n";
+            }
+            print "\n";
+        }
+        if ( $opt_extra_right_col ) {
+            print "\t;; extra right column\n";
+            print join("\n", map {
+                sprintf "\tdb\t\$%02x,\$%02x\t\t;; mask: %s   pix: %s",
+                    $_->[0], $_->[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
+            } ( ( [ 255,0 ] ) x ( ( zxgfx_get_height_cells( $gfx ) + ( $opt_extra_bottom_row ? 1 : 0 )  ) * 8 ) ) );
+            print "\n";
+        }
+    }
+
+    # pixels: footer
+    print ";;;;;;";
+
 }
 
 
