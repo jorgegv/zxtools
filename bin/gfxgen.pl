@@ -170,30 +170,87 @@ sub byte2graph {
 ## tile output functions
 ############################
 
-my %tile_output_fn = (
-    'c'		=> \&output_tiles_c,
-    'asm'	=> \&output_tiles_asm,
+my %tile_output_format = (
+    comment1 => {
+        'c'	=> "// tile '%s' definition\n// pixel data\n",
+        'asm'	=> ";; tile '%s' definition\n;; pixel data\n",
+    },
+    header1 => {
+        'c'	=> "uint8_t %s_pixels[ %d ] = {\n",
+        'asm'	=> "PUBLIC %s_pixels\n",
+    },
+    header2 => {
+        'c'	=> "",
+        'asm'	=> "%s_pixels:\n",
+    },
+    comment2 => {
+        'c'	=> "\t// rows: 0-%d, col: %d\n",
+        'asm'	=> "\t;; rows: 0-%d, col: %d\n",
+    },
+    output1 => {
+        'c'	=> "\t0x%02x,\t\t// pix: %s",
+        'asm'	=> "\t\$%02x\t\t;; pix: %s",
+    },
+    comment3 => {
+        'c'	=> "\t// row: %d, col: %d\n",
+        'asm'	=> "\t;; row: %d, col: %d\n",
+    },
+    comment4 => {
+        'c'	=> "\t// row: %d, cols: 0-%d\n",
+        'asm'	=> "\t;; row: %d, cols: 0-%d\n",
+    },
+    output2 => {
+        'c'	=> "\t%s,\t\t// pix: %s\n",
+        'asm'	=> "\t%s,\t\t;; pix: %s\n",
+    },
+    output3 => {
+        'c'	=> "\t%s,\t\t// pix: %s\n",
+        'asm'	=> "\t%s,\t\t;; pix: %s\n",
+    },
+    output4 => {
+        'c'	=> "0x%02x",
+        'asm'	=> "\$%02x",
+    },
+    footer1 => {
+        'c'	=> "};\n",
+        'asm'	=> "",
+    },
+    header3 => {
+        'c'	=> "uint8_t %s_attr[ %d ] = {\n",
+        'asm'	=> "PUBLIC %s_attr\n",
+    },
+    header4 => {
+        'c'	=> "",
+        'asm'	=> "%s_attr:\n",
+    },
+    output5 => {
+        'c'	=> "\t%s,\t// row:%2d, col:%2d, attr: %sb - %s\n",
+        'asm'	=> "\tdb\t%s\t;; row:%2d, col:%2d, attr: %sb - %s\n",
+    },
+    footer2 => {
+        'c'	=> "};\n",
+        'asm'	=> ";;;;;;;;;;;;\n",
+    },
 );
 
 sub output_tiles {
     my $gfx = shift;
-    $tile_output_fn{ $opt_code_type }( $gfx );
-}
-
-sub output_tiles_c {
-    my $gfx = shift;
+    my $ct = $opt_code_type;
 
     # pixels: header
-    printf "// tile '%s' definition\n// pixel data\n", $opt_symbol_name;
-    printf "uint8_t %s_pixels[ %d ] = {\n", $opt_symbol_name, zxgfx_get_width_cells( $gfx )  *  zxgfx_get_height_cells( $gfx ) * 8;
+    printf $tile_output_format{'comment1'}{ $ct }, $opt_symbol_name;
+    printf $tile_output_format{'header1'}{ $ct }, $opt_symbol_name, zxgfx_get_width_cells( $gfx )  *  zxgfx_get_height_cells( $gfx ) * 8;
+    if ( $tile_output_format{'header2'}{ $ct } ) {
+        printf $tile_output_format{'header2'}{ $ct }, $opt_symbol_name;
+    }
 
     # pixels: data
     if ( $opt_layout eq 'columns' ) {
         foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
-            printf "\t// rows: 0-%d, col: %d\n", (zxgfx_get_height_cells( $gfx ) - 1), $col;
+            printf $tile_output_format{'comment2'}{ $ct }, (zxgfx_get_height_cells( $gfx ) - 1), $col;
             foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
                 print join("\n", map {
-                    sprintf "\t0x%02x,\t\t// pix: %s", $_, byte2graph( $_ )
+                    sprintf $tile_output_format{'output1'}{ $ct }, $_, byte2graph( $_ )
                 } @{ $gfx->{'cells'}[ $row ][ $col ]{'bytes'} } );
                 print "\n";
             }
@@ -205,9 +262,9 @@ sub output_tiles_c {
     if ( $opt_layout eq 'rows' ) {
         foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
             foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
-                printf "\t// row: %d, col: %d\n", $row, $col;
+                printf $tile_output_format{'comment3'}{ $ct }, $row, $col;
                 print join("\n", map {
-                    sprintf "\t0x%02x,\t\t// pix: %s", $_, byte2graph( $_ )
+                    sprintf $tile_output_format{'output1'}{ $ct }, $_, byte2graph( $_ )
                 } @{ $gfx->{'cells'}[ $row ][ $col ]{'bytes'} } );
                 print "\n\n";
             }
@@ -215,13 +272,13 @@ sub output_tiles_c {
     }
     if ( $opt_layout eq 'scanlines' ) {
         foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
-            printf "\t// row: %d, cols: 0-%d\n", $row, (zxgfx_get_width_cells( $gfx ) - 1);
+            printf $tile_output_format{'comment4'}{ $ct }, $row, (zxgfx_get_width_cells( $gfx ) - 1);
             foreach my $scan ( 0 .. 7 ) {
                 my @scan_bytes = map {
                     $gfx->{'cells'}[ $row ][ $_ ]{'bytes'}[ $scan ];
                 } ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) );
-                printf "\t%s,\t\t// pix: %s\n",
-                    join( ", ", map { sprintf( "0x%02x", $_ ) } @scan_bytes ),
+                printf $tile_output_format{'output3'}{ $ct },
+                    join( ", ", map { sprintf( $tile_output_format{'output4'}{ $ct }, $_ ) } @scan_bytes ),
                     join( '', map { byte2graph( $_ ) } @scan_bytes );
             }
             print "\n";
@@ -230,121 +287,43 @@ sub output_tiles_c {
 
 
     # pixels: footer
-    print "};\n";
+    print $tile_output_format{'footer1'}{ $ct };
 
     # attr: header
-    printf "uint8_t %s_attr[ %d ] = {\n", $opt_symbol_name, zxgfx_get_width_cells( $gfx ) * zxgfx_get_height_cells( $gfx );
+    printf $tile_output_format{'header3'}{ $ct }, $opt_symbol_name, zxgfx_get_width_cells( $gfx ) * zxgfx_get_height_cells( $gfx );
+    if ( $tile_output_format{'header4'}{ $ct } ) {
+        printf $tile_output_format{'header4'}{ $ct }, $opt_symbol_name;
+    }
     
     # attr: data
     # column-major order for 'columns' mode, row-major order for 'rows' and 'scanlines' modes
     if ( $opt_layout eq 'columns' ) {
         foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
             foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
-                printf "\t%s,\t// row:%2d, col:%2d, attr: %s\n",
-                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_text'},
+                printf $tile_output_format{'output5'}{ $ct },
+                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'},
                     $row,$col,
-                    byte2bin( $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'} );
+                    byte2bin( $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'} ),
+                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_text'},
+                ;
             }
         }
     }
     if ( ( $opt_layout eq 'rows' ) or ( $opt_layout eq 'scanlines' ) ) {
         foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
             foreach my $col (0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
-                printf "\t%s,\t// row:%2d, col:%2d, attr: %sb\n",
+                printf $tile_output_format{'output5'}{ $ct },
+                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'},
+                    $row,$col,
+                    byte2bin( $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'} ),
                     $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_text'},
-                    $row,$col,
-                    byte2bin( $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'} );
+                ;
             }
         }
     }
     
     # attr: footer
-    print "};\n";
-    print "\n";
-
-}
-
-sub output_tiles_asm {
-    my $gfx = shift;
-
-    # pixels: header
-    print ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n";
-    printf ";; tile '%s' definition\n;; pixel data\n\n", $opt_symbol_name;
-    printf "PUBLIC %s_pixels\n", $opt_symbol_name;
-    printf "%s_pixels:\n", $opt_symbol_name;
-
-    # pixels: data
-    if ( $opt_layout eq 'columns' ) {
-        foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
-            printf "\t;; rows: 0-%d, col: %d\n", (zxgfx_get_height_cells( $gfx ) - 1), $col;
-            foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
-                print join("\n", map {
-                    sprintf "\tdb\t\$%02x\t\t;; pix: %s", $_, byte2graph( $_ )
-                } @{ $gfx->{'cells'}[ $row ][ $col ]{'bytes'} } );
-                print "\n";
-            }
-            print "\n";
-        }
-    }
-    if ( $opt_layout eq 'rows' ) {
-        foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
-            foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
-                printf "\t// row: %d, col: %d\n", $row, $col;
-                print join("\n", map {
-                    sprintf "\tdb\t\$%02x\t\t;; pix: %s", $_, byte2graph( $_ )
-                } @{ $gfx->{'cells'}[ $row ][ $col ]{'bytes'} } );
-                print "\n\n";
-            }
-        }
-    }
-    if ( $opt_layout eq 'scanlines' ) {
-        foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
-            printf "\t// row: %d, cols: 0-%d\n", $row, (zxgfx_get_width_cells( $gfx ) - 1);
-            foreach my $scan ( 0 .. 7 ) {
-                my @scan_bytes = map {
-                    $gfx->{'cells'}[ $row ][ $_ ]{'bytes'}[ $scan ];
-                } ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) );
-                printf "\tdb\t%s\t\t;; pix: %s\n",
-                    join( ",", map { sprintf( "\$%02x", $_ ) } @scan_bytes ),
-                    join( '', map { byte2graph( $_ ) } @scan_bytes );
-            }
-            print "\n";
-        }
-    }
-
-    # pixels: footer
-    # nothing special needed
-
-    # attr: header
-    print ";; attribute data\n";
-    printf "PUBLIC %s_attr\n", $opt_symbol_name;
-    printf "%s_attr:\n", $opt_symbol_name;
-    
-    # attr: data
-    # column-major order for 'columns' mode, row-major order for 'rows' and 'scanlines' modes
-    if ( $opt_layout eq 'columns' ) {
-        foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
-            foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
-                printf "\tdb\t\$%02x\t\t;; row:%2d, col:%2d, attr: %s\n",
-                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'},
-                    $row,$col,
-                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_text'};
-            }
-        }
-    }
-    if ( ( $opt_layout eq 'rows' ) or ( $opt_layout eq 'scanlines' ) ) {
-        foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
-            foreach my $col (0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
-                printf "\tdb\t\$%02x,\t\t;; row:%2d, col:%2d, attr: %s\n",
-                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_integer'},
-                    $row,$col,
-                    $gfx->{'cells'}[ $row ][ $col ]{'attr'}{'as_text'};
-            }
-        }
-    }
-    
-    # attr: footer
-    print ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n";
+    print $tile_output_format{'footer2'}{ $ct };
     print "\n";
 
 }
@@ -356,7 +335,7 @@ sub output_tiles_asm {
 my %sprite_output_format = (
     comment1 => {
         'c'	=> "// sprite '%s' definition\n// pixel data\n// %s\n// %s\n",
-        'asm'	=> ";; sprite '%s' definition\n;; pixel data\n;; %s\n;; %s\n",,
+        'asm'	=> ";; sprite '%s' definition\n;; pixel data\n;; %s\n;; %s\n",
     },
     header1 => {
         'c'	=> "uint8_t %s_pixels[ %d ] = {\n",
@@ -412,9 +391,9 @@ sub output_sprite {
         ( zxgfx_get_width_cells( $gfx ) + ( $opt_extra_right_col ? 1 : 0 ) ) * 
         ( zxgfx_get_height_cells( $gfx ) + ( $opt_extra_bottom_row ? 1 : 0 )  ) * 8 * 2
     );
-    printf( $sprite_output_format{'header2'}{ $ct },
-        $opt_symbol_name 
-    );
+    if ( $sprite_output_format{'header2'}{ $ct } ) {
+        printf $sprite_output_format{'header2'}{ $ct }, $opt_symbol_name;
+    }
 
     # pixels: data
     if ( $opt_layout eq 'columns' ) {
