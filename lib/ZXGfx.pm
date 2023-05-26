@@ -137,9 +137,9 @@ sub zxgfx_extract_from_png {
 
     # extract pixels from PNG - generates $graphic->{'pixels'}
     # bidimencional array of pixel colors in 'RRGGBB' format, row-major form
-    foreach my $row ( $ypos .. ($ypos + $height - 1) ) {
-      foreach my $col ( $xpos .. ($xpos + $width - 1) ) {
-          $gfx->{'pixels'}[ $row ][ $col ] = sprintf( '%02x%02x%02x', $png->rgb( $png->getPixel( $col, $row ) ) );
+    foreach my $row ( 0 .. ($height - 1) ) {
+      foreach my $col ( 0 .. ($width - 1) ) {
+          $gfx->{'pixels'}[ $row ][ $col ] = sprintf( '%02x%02x%02x', $png->rgb( $png->getPixel( $xpos + $col, $ypos + $row ) ) );
       }
     }
 
@@ -198,22 +198,22 @@ sub zxgfx_extract_sprite_pixels_from_cell {
     my @bytes;
     my @masks;
     foreach my $row ( 0 .. 7 ) {
-        my $byte = 0;
-        my $mask = 0;
+        my $cur_byte = 0;
+        my $cur_mask = 0;
         foreach my $col ( 0 .. 7 ) {
             my $color = $gfx->{'pixels'}[ $ypos + $row ][ $xpos + $col ];
             if ( $color eq $fg ) {
-                $byte += 1 << ( 7 - $col );	# add fg bit to pixels
+                $cur_byte += 1 << ( 7 - $col );	# add fg bit to pixels
             } elsif ( $color eq $bg ) {
-                $byte += 0;			# add bg bit to pixels
+                $cur_byte += 0;			# add bg bit to pixels
             } elsif ( $color eq $mask ) {
-                $mask += 1 << ( 7 - $col );	# add bit to mask
+                $cur_mask += 1 << ( 7 - $col );	# add bit to mask
             } else {
                 warn sprintf("** Unexpected color $color found at (%d,%d)!\n", $xpos + $col, $ypos + $row );
             }
         }
-        push @bytes, $byte;
-        push @masks, $mask;
+        push @bytes, $cur_byte;
+        push @masks, $cur_mask;
     }
     return ( \@bytes, \@masks );
 }
@@ -225,9 +225,9 @@ sub zxgfx_extract_sprite_cells {
     my ( $gfx, $fg, $bg, $mask ) = @_;
     foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
         foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
-            my ( $pixels, $masks ) = zxgfx_extract_sprite_pixels_from_cell( $gfx, $col * 8, $row * 8, $fg, $bg, $mask );
+            my ( $bytes, $masks ) = zxgfx_extract_sprite_pixels_from_cell( $gfx, $col * 8, $row * 8, $fg, $bg, $mask );
             $gfx->{'cells'}[ $row ][ $col ] = {
-                bytes	=> $pixels,
+                bytes	=> $bytes,
                 masks	=> $masks,
             };
         }
