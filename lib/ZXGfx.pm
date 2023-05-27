@@ -255,6 +255,24 @@ sub zxgfx_get_height_cells {
     return zxgfx_get_height_pixels( $gfx ) / 8;
 }
 
+# Validates that all cells in the provided gfx have at most the requested
+# number of colors, die if not
+sub zxgfx_validate_cell_colors {
+    my ( $gfx, $num_colors ) = @_;
 
+    my @errors;
+    foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
+        foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
+            my $attr_info = zxgfx_extract_attr_from_cell( $gfx, $col * 8, $row * 8 );
+            if ( scalar( @{ $attr_info->{'all_colors'} } ) != $num_colors ) {
+                push @errors, sprintf( "** Cell ($row,$col) has %d colors: %s - Expected at most %d",
+                    scalar( @{ $attr_info->{'all_colors'} } ),
+                    join( ',', @{ $attr_info->{'all_colors'} } ),
+                    $num_colors );
+            }
+        }
+    }
+    return \@errors;
+}
 
 1;

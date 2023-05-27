@@ -450,6 +450,18 @@ process_cli_options;
 ## import the PNG file, extract the region indicated and convert it into ZX color space
 my $gfx = zxgfx_extract_from_png( $opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height );
 
+## validate max number of colors is valid in all cells
+##   tile: fg, and bg
+##   sprite: fg, bg and mask
+my $max_colors = ( $opt_gfx_type eq 'tile' ? 2 : 3 );
+my $errors = zxgfx_validate_cell_colors( $gfx, $max_colors );
+if ( @$errors ) {
+    die join( "\n",
+        "Error: ZX incompatible color combinations were found in the source image:",
+        @$errors,
+        ) . "\n";
+}
+
 ## create the data for the 8x8 cells according to the type of data requested, and output the generated code
 if ( $opt_gfx_type eq 'tile' ) {
     zxgfx_extract_tile_cells( $gfx );
