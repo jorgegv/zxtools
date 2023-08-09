@@ -15,15 +15,19 @@ use ZXGfx;
 
 sub show_usage {
     print <<EOF_USAGE
+
 gfxgen.pl - Create ZX Spectrum graphics C/ASM data definitions from a PNG file
 
-Extracts graphics data (sprite/tile) from a source PNG file at a given position and size, and
-generates C or ASM data definitions.  Graphics elements are created with the given symbol name, and
-can be generated with different layouts (by cells, by lines,...) and data formats (pixels only,
-pixels and mask, attributes).  Some extra quirks for specialized layouts (e.g.  SP1 sprite library)
-are also available, and preshifted sprites can also be generated with various shift steps.
+Extracts graphics data (sprite/tile) from a source PNG file at a given
+position and size, and generates C or ASM data definitions.  Graphics
+elements are created with the given symbol name, and can be generated with
+different layouts (by cells, by lines,...) and data formats (pixels only,
+pixels and mask, attributes).  Some extra quirks for specialized layouts
+(e.g.  SP1 sprite library) are also available, and preshifted sprites can
+also be generated with various shift steps.
 
-All coordinates and dimensions are in pixels. Width and height must be multiples of 8.
+All coordinates and dimensions are in pixels except for --row and --col. 
+Width and height must be multiples of 8.
 
 Colors are specified in standard web format: RRGGBB values with hex digits.
 
@@ -32,6 +36,8 @@ Options:
     -i, --input <png_file>
     -x, --xpos <x_position>
     -y, --ypos <y_position>
+        --row <row_position> (exclusive with --ypos)
+        --col <column_position> (exclusive with --xpos)
     -w, --width <width>
     -h, --height <height>
     -m, --mask <mask_color> - default: FF0000 (red)
@@ -59,13 +65,15 @@ EOF_USAGE
 my ($opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height, $opt_mask,
     $opt_foreground, $opt_background, $opt_code_type, $opt_symbol_name,
     $opt_layout, $opt_gfx_type, $opt_preshift, $opt_extra_right_col,
-    $opt_extra_bottom_row );
+    $opt_extra_bottom_row, $opt_row, $opt_col );
 
 sub process_cli_options {
     GetOptions(
         'input=s'		=> \$opt_input,
         'xpos=i'		=> \$opt_xpos,
         'ypos=i'		=> \$opt_ypos,
+        'row=i'			=> \$opt_row,
+        'col=i'			=> \$opt_col,
         'width=i'		=> \$opt_width,
         'height=i'		=> \$opt_height,
         'mask:s'		=> \$opt_mask,
@@ -81,7 +89,8 @@ sub process_cli_options {
     ) or show_usage;
 
     # check for mandatory options
-    ( defined( $opt_input ) and defined( $opt_xpos ) and defined( $opt_ypos ) and 
+    ( defined( $opt_input ) and ( defined( $opt_xpos ) or defined( $opt_col) ) and 
+      ( defined( $opt_ypos ) or defined( $opt_row ) ) and 
       defined( $opt_height ) and defined( $opt_width ) and defined( $opt_code_type ) and
       defined( $opt_symbol_name ) and defined( $opt_layout ) and defined( $opt_gfx_type ) ) 
       or show_usage;
@@ -148,6 +157,20 @@ sub process_cli_options {
             die "--extra-bottom-row is only valid in sprite mode\n";
     }
 
+    # override xpos and ypos with col and row
+    if ( defined( $opt_col ) and defined( $opt_xpos ) ) {
+        die "--xpos and --col cannot be used together\n";
+    }
+    if ( defined( $opt_col ) ) {
+        $opt_xpos = $opt_col * 8;
+    }
+
+    if ( defined( $opt_row ) and defined( $opt_ypos ) ) {
+        die "--ypos and --row cannot be used together\n";
+    }
+    if ( defined( $opt_row ) ) {
+        $opt_ypos = $opt_row * 8;
+    }
 }
 
 ######################
