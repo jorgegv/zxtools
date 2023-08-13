@@ -5,7 +5,8 @@ Tools for ZX Spectrum development
 ## Tools
 
 * **szxdump.pl:** decodes SZX files including memory contents
-* **spritegen.pl:** generates ASM and C sprite definitions from PNG files
+* **gfxgen.pl:** generates ASM and C tile and sprite definitions from PNG files
+* **tapdump.pl:** dumps TAP file structure
 
 ## Requirements
 
