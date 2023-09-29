@@ -29,10 +29,37 @@ sub summary_CRTR {
     return sprintf( "Creator: %s, Major: %d, Minor: %d", map { $data->{ $_ } } qw( creator major minor ) );
 }
 
+
+my %colors = (
+    0 => 'BLACK',
+    1 => 'BLUE',
+    2 => 'RED',
+    3 => 'MAGENTA',
+    4 => 'GREEN',
+    5 => 'CYAN',
+    6 => 'YELLOW',
+    7 => 'WHITE',
+);
+sub summary_SPCR {
+    my $block = shift;
+    my $data = $block->{'data'};
+    return sprintf( "Border: %d (%s), Port_7ffd: %d (0x%02x), Port_1ffd: %d (0x%02x), Port_fe: %d (0x%02x)",
+        $data->{'border'},
+        $colors{ $data->{'border'} } || '(unknown)',
+        $data->{'port_7ffd'},
+        $data->{'port_7ffd'},
+        $data->{'port_1ffd'},
+        $data->{'port_1ffd'},
+        $data->{'port_fe'},
+        $data->{'port_fe'},
+    );
+}
+
 ## Dispatch table
 my $block_summary_function = {
     'CRTR' => \&summary_CRTR,
     'RAMP' => \&summary_RAMP,
+    'SPCR' => \&summary_SPCR,
 };
 
 ##

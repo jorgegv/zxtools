@@ -70,12 +70,14 @@ sub szx_read_next_block {
 ## Decoding functions
 ##
 
+# Creator record
 sub szx_decode_CRTR {
     my $data = shift;
     my ( $creator, $major, $minor ) = unpack( 'A[32]SS', $data );
     return { creator => $creator, major => $major, minor => $minor };
 }
 
+# RAM Page record
 sub szx_decode_RAMP {
     my $data = shift;
     my ( $compressed, $pageno, @page_data ) = unpack( 'SCC*', $data );
@@ -91,10 +93,23 @@ sub szx_decode_RAMP {
     };
 }
 
+# Spectrum Registers record
+sub szx_decode_SPCR {
+    my $data = shift;
+    my ( $border, $port_7ffd, $port_1ffd, $port_fe, $reserved ) = unpack( "CCCCN", $data );
+    return {
+        border		=> $border,
+        port_7ffd	=> $port_7ffd,
+        port_1ffd	=> $port_1ffd,
+        port_fe		=> $port_fe,
+    }
+}
+
 ## Dispatch tables
 $block_decode_function = {
     'CRTR' => \&szx_decode_CRTR,
     'RAMP' => \&szx_decode_RAMP,
+    'SPCR' => \&szx_decode_SPCR,
 };
 
 sub szx_decode_block {
