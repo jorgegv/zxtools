@@ -160,10 +160,10 @@ sub zxgfx_extract_tile_pixels_from_cell {
         my $byte = 0;
         foreach my $col ( 0 .. 7 ) {
             my $color = $gfx->{'pixels'}[ $ypos + $row ][ $xpos + $col ];
-            if ( $color eq $fg ) {
-                $byte += 1 << ( 7 - $col );	# add fg bit
-            } elsif ( $color eq $bg ) {
+            if ( $color eq $bg ) {
                 $byte += 0;			# add bg bit
+            } elsif ( $color eq $fg ) {
+                $byte += 1 << ( 7 - $col );	# add fg bit
             } else {
                 warn sprintf("** Unexpected color $color found at (%d,%d)!\n", $xpos + $col, $ypos + $row );
             }
@@ -264,7 +264,7 @@ sub zxgfx_validate_cell_colors {
     foreach my $row ( 0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
         foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
             my $attr_info = zxgfx_extract_attr_from_cell( $gfx, $col * 8, $row * 8 );
-            if ( scalar( @{ $attr_info->{'all_colors'} } ) != $num_colors ) {
+            if ( scalar( @{ $attr_info->{'all_colors'} } ) > $num_colors ) {
                 push @errors, sprintf( "** Cell ($row,$col) has %d colors: %s - Expected at most %d",
                     scalar( @{ $attr_info->{'all_colors'} } ),
                     join( ',', @{ $attr_info->{'all_colors'} } ),
