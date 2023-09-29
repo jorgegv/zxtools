@@ -84,11 +84,9 @@ if ( $memory_dump_base_address =~ /^0[xX]([\dA-Fa-f]+)/ ) {
     $memory_dump_base_address = hex( $1 );
 }
 
-open( my $fh, "<", $szx_file ) or
-    die "Could not open $szx_file for reading: $!\n";
-binmode $fh;
+my $szx = szx_parse_file( $szx_file );
 
-my $header = szx_read_header( $fh );
+my $header = $szx->{'header'};
 ( $header->{'magic'} eq 'ZXST' ) or
     die "Error: $szx_file is not a ZXST file\n";
 
@@ -99,8 +97,7 @@ if ( not defined( $bank_to_dump ) ) {
 }
 
 print "Data blocks:\n";
-while ( not eof $fh ) {
-    my $block = szx_read_next_block( $fh );
+foreach my $block ( @{ $szx->{'blocks'} } ) {
     if ( not defined( $bank_to_dump ) ) {
         printf "[ Type: %-4s, Block Size: %d bytes ]\n", map { $block->{ $_ } } qw( id size );
         if ( defined( $block_summary_function->{ $block->{'id'} } ) ) {

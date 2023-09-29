@@ -120,4 +120,24 @@ sub szx_decode_block {
     return undef;
 }
 
+# returns hashref: { header => ..., blocks => [ ] }
+sub szx_parse_file {
+    my $szx_file = shift;
+
+    open( my $fh, "<", $szx_file ) or
+        die "Could not open $szx_file for reading: $!\n";
+    binmode $fh;
+
+    my $header = szx_read_header( $fh );
+    ( $header->{'magic'} eq 'ZXST' ) or
+        die "Error: $szx_file is not a ZXST file\n";
+
+    my @blocks;
+    while ( not eof $fh ) {
+        push @blocks, szx_read_next_block( $fh );
+    }
+
+    return { header => $header, blocks => \@blocks };
+}
+
 1;
