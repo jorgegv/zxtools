@@ -1,7 +1,8 @@
 # SZXDATA test script
-pb 12345	# This is a comment
-pw $1234
-pl 0x5678
+pb 18901	# This is a comment
+pw 0x8000
+pl 0xcf0a
+pw $8000
 PL %000111	# with UPPERcase
 
 # after blank line
