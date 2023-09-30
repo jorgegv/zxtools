@@ -133,22 +133,31 @@ sub resolve_symbol {
 
 my $script_syntax = {
     'pb' => sub {
-            my $addr = decode_number( $_[0] ) || resolve_symbol( $_[0] );
-            defined( $addr ) or die "Could not resolv address $_[0]\n";
-            my $val = get_byte_at( $memory, $addr );
-            printf( "byte[ 0x%04X ] = 0x%02X (%d)\n", $addr, $val, $val );
+            my ( $label, $addr ) = @_;
+            my $decoded_addr = decode_number( $addr ) || resolve_symbol( $addr );
+            defined( $decoded_addr ) or die "Could not resolv address $addr\n";
+            my $val = get_byte_at( $memory, $decoded_addr );
+            my $label_text = ( $label ? sprintf( "%s = 0x%02X", $label, $val ) : '' );
+            my $line = sprintf( "byte[ 0x%04X (%s) ] = 0x%02X (%d)", $decoded_addr, $addr, $val, $val );
+            printf "%-50s | %s\n", ($label_text || ''), $line;
         },
     'pw' => sub {
-            my $addr = decode_number( $_[0] ) || resolve_symbol( $_[0] );
-            defined( $addr ) or die "Could not resolv address $_[0]\n";
-            my $val = get_word_at( $memory, $addr );
-            printf( "word[ 0x%04X ] = 0x%04X (%d)\n", $addr, $val, $val );
+            my ( $label, $addr ) = @_;
+            my $decoded_addr = decode_number( $addr ) || resolve_symbol( $addr );
+            defined( $decoded_addr ) or die "Could not resolv address $addr\n";
+            my $val = get_word_at( $memory, $decoded_addr );
+            my $label_text = ( $label ? sprintf( "%s = 0x%04X", $label, $val ) : '' );
+            my $line = sprintf( "word[ 0x%04X (%s) ] = 0x%04X (%d)", $decoded_addr, $addr, $val, $val );
+            printf "%-50s | %s\n", ($label_text || ''), $line;
         },
     'pl' => sub {
-            my $addr = decode_number( $_[0] ) || resolve_symbol( $_[0] );
-            defined( $addr ) or die "Could not resolv address $_[0]\n";
-            my $val = get_long_at( $memory, $addr );
-            printf( "long[ 0x%04X ] = 0x%08X (%d)\n", $addr, $val, $val );
+            my ( $label, $addr) = @_;
+            my $decoded_addr = decode_number( $addr ) || resolve_symbol( $addr );
+            defined( $decoded_addr ) or die "Could not resolv address $addr\n";
+            my $val = get_long_at( $memory, $decoded_addr );
+            my $label_text = ( $label ? sprintf( "%s = 0x%08X", $label, $val ) : '' );
+            my $line = sprintf( "long[ 0x%04X (%s) ] = 0x%08X (%d)\n", $decoded_addr, $addr, $val, $val );
+            printf "%-50s | %s\n", ($label_text || ''), $line;
         },
 };
 
@@ -169,14 +178,23 @@ sub compile_script {
         next if $line =~ m/^$/;
 
         # start matching lines
-        if ( $line =~ m/^(\w+)\s+(.+)/i ) {
-            my ( $cmd, $args ) = ( lc( $1 ), $2 );
+        if ( $line =~ m/^(\w+)\s+(.+):(.*)/i ) {
+            my ( $cmd, $args, $label ) = ( lc( $1 ), $2 , $3 );
             if ( exists( $script_syntax->{ $cmd } ) ) {
-                push @script, { 'cmd' => $cmd, 'args' => [ split( /\s+/, $args ) ] };
+                push @script, { 'cmd' => $cmd, 'args' => [ split( /\s+/, $args ) ], 'label' => $label };
             } else {
                 warn "** Line $line_number: unrecognized command '$cmd'\n";
                 $errors++;
             }
+        } elsif ( $line =~ m/^(\w+)\s+(.+)/i ) {
+            my ( $cmd, $args ) = ( lc( $1 ), $2 );
+            if ( exists( $script_syntax->{ $cmd } ) ) {
+                push @script, { 'cmd' => $cmd, 'args' => [ split( /\s+/, $args ) ], 'label' => undef };
+            } else {
+                warn "** Line $line_number: unrecognized command '$cmd'\n";
+                $errors++;
+            }
+
         # everything unknown is an error
         } else {
             warn "** Line $line_number: unrecognized syntax\n";
@@ -195,8 +213,7 @@ sub run_script {
 
     foreach my $cmd ( @$script ) {
         if ( defined( $script_syntax->{ $cmd->{'cmd'} } ) ) {
-            print join( ' ', map { "'$_'" } @{ $cmd->{'args'} } ), "\n";
-            &{ $script_syntax->{ $cmd->{'cmd'} } }( @{ $cmd->{'args'} } );
+            &{ $script_syntax->{ $cmd->{'cmd'} } }( $cmd->{'label'}, @{ $cmd->{'args'} } );
         } else {
             printf "Command '%s' not understood\n", $cmd->{'cmd'};
         }
