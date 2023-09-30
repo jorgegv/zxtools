@@ -101,38 +101,54 @@ sub get_long_at {
         $mem->[ $pos + 3 ] * 256 * 256 * 256;
 }
 
-sub decode_addr {
+# decodes 1234, $1234, 0x1234 and %1001
+sub decode_number {
     my $addr = shift;
     for ( $addr ) {
-        if 	( /^0x([a-fA-F0-9]+)/ )	{ return hex( $1 ); }
-        elsif	( /^\$([a-fA-F0-9]+)/ )	{ return hex( $1 ); }
-        elsif	( /^%([01]+)/ )		{ return oct( "0b$1" ); }
-        elsif	( /^(\d+)/ )		{ return $1; }
-        else	{ return -1; }
+        if 	( /^0x([a-fA-F0-9]+)$/ )	{ return hex( $1 ); }
+        elsif	( /^\$([a-fA-F0-9]+)$/ )	{ return hex( $1 ); }
+        elsif	( /^%([01]+)$/ )		{ return oct( "0b$1" ); }
+        elsif	( /^(\d+)$/ )			{ return $1; }
+        else	{ return undef; }
     }
 }
 
+# resolves symbol+offset, symbol-offset addresses
+sub resolve_symbol {
+    my $addr = shift;
+    for ( $addr ) {
+        if ( /^([_\w]+)$/ ) {
+            return defined( $map_symbols->{ $1 } ) ? $map_symbols->{ $1 } : undef;
+            }
+        elsif ( /^([_\w]+)([\+\-]\d+)$/ ) {
+            return defined( $map_symbols->{ $1 } ) ? $map_symbols->{ $1 } + $2 : undef;
+            }
+        else { return undef; }
+    }
+}
+
+###################
+## script syntax 
+###################
+
 my $script_syntax = {
     'pb' => sub {
-            printf( "byte[ 0x%04X ] = 0x%02X (%d)\n",
-                decode_addr( $_[0] ),
-                get_byte_at( $memory, decode_addr( $_[0] ) ),
-                get_byte_at( $memory, decode_addr( $_[0] ) ),
-            );
+            my $addr = decode_number( $_[0] ) || resolve_symbol( $_[0] );
+            defined( $addr ) or die "Could not resolv address $_[0]\n";
+            my $val = get_byte_at( $memory, $addr );
+            printf( "byte[ 0x%04X ] = 0x%02X (%d)\n", $addr, $val, $val );
         },
     'pw' => sub {
-            printf( "word[ 0x%04X ] = 0x%04X (%d)\n",
-                decode_addr( $_[0] ),
-                get_word_at( $memory, decode_addr( $_[0] ) ),
-                get_word_at( $memory, decode_addr( $_[0] ) ),
-            );
+            my $addr = decode_number( $_[0] ) || resolve_symbol( $_[0] );
+            defined( $addr ) or die "Could not resolv address $_[0]\n";
+            my $val = get_word_at( $memory, $addr );
+            printf( "word[ 0x%04X ] = 0x%04X (%d)\n", $addr, $val, $val );
         },
     'pl' => sub {
-            printf( "long[ 0x%04X ] = 0x%08X (%d)\n",
-                decode_addr( $_[0] ),
-                get_long_at( $memory, decode_addr( $_[0] ) ),
-                get_long_at( $memory, decode_addr( $_[0] ) ),
-            );
+            my $addr = decode_number( $_[0] ) || resolve_symbol( $_[0] );
+            defined( $addr ) or die "Could not resolv address $_[0]\n";
+            my $val = get_long_at( $memory, $addr );
+            printf( "long[ 0x%04X ] = 0x%08X (%d)\n", $addr, $val, $val );
         },
 };
 
@@ -179,6 +195,7 @@ sub run_script {
 
     foreach my $cmd ( @$script ) {
         if ( defined( $script_syntax->{ $cmd->{'cmd'} } ) ) {
+            print join( ' ', map { "'$_'" } @{ $cmd->{'args'} } ), "\n";
             &{ $script_syntax->{ $cmd->{'cmd'} } }( @{ $cmd->{'args'} } );
         } else {
             printf "Command '%s' not understood\n", $cmd->{'cmd'};

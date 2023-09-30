@@ -4,5 +4,8 @@ pw 0x8000
 pl 0xcf0a
 pw $8000
 PL %000111	# with UPPERcase
+pb _main
+pb _home_assets+2
+pb _home_assets-5
 
 # after blank line
