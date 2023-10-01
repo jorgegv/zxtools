@@ -12,11 +12,17 @@ use List::Util qw( first );
 
 use SZXFile;
 
+# output width for the non-tracing part
+my $out_width = 60;
+
 # binary name for easy access
 my $exe = basename( $0 );
 
 # symbols loaded from the map. Values are stored as numbers (no hex, etc.)
 my $map_symbols;
+
+# symbols defined by DEF instructions
+my $def_symbols;
 
 # memory bytes
 my $memory;
@@ -74,10 +80,15 @@ sub map_memory_array {
     } @{ $szx->{'blocks'} };
 
     # decode and push page data at the proper memory ranges
-    push @mem_bytes, (0) x 16384 ;
+#    push @mem_bytes, (0xde,0xad,0xbe,0xef) x 4096 ;
+    push @mem_bytes, ( 0 ) x 16384 ;
     push @mem_bytes, unpack('C*', $page_4000->{'data'}{'uncompressed_data'} );
     push @mem_bytes, unpack('C*', $page_8000->{'data'}{'uncompressed_data'} );
     push @mem_bytes, unpack('C*', $page_c000->{'data'}{'uncompressed_data'} );
+
+    if ( scalar( @mem_bytes ) != 65536 ) {
+        die "** Error: memory array should be 65536 bytes long, it is ".scalar( @mem_bytes )."\n";
+    }
 
     return \@mem_bytes;
 }
@@ -117,11 +128,13 @@ sub decode_number {
 sub resolve_symbol {
     my $addr = shift;
     for ( $addr ) {
-        if ( /^([_\w]+)$/ ) {
-            return defined( $map_symbols->{ $1 } ) ? $map_symbols->{ $1 } : undef;
+        if ( /^([_\w\.]+)$/ ) {
+            return $map_symbols->{ $1 } if defined( $map_symbols->{ $1 } );
+            return $def_symbols->{ $1 } if defined( $def_symbols->{ $1 } );
             }
-        elsif ( /^([_\w]+)([\+\-]\d+)$/ ) {
-            return defined( $map_symbols->{ $1 } ) ? $map_symbols->{ $1 } + $2 : undef;
+        elsif ( /^([_\w\.]+)([\+\-]\d+)$/ ) {
+            return ( $map_symbols->{ $1 } + $2 ) if defined( $map_symbols->{ $1 } );
+            return ( $def_symbols->{ $1 } + $2 ) if defined( $def_symbols->{ $1 } );
             }
         else { return undef; }
     }
@@ -135,29 +148,44 @@ my $script_syntax = {
     'pb' => sub {
             my ( $label, $addr ) = @_;
             my $decoded_addr = decode_number( $addr ) || resolve_symbol( $addr );
-            defined( $decoded_addr ) or die "Could not resolv address $addr\n";
+            defined( $decoded_addr ) or die "Could not resolve address $addr\n";
             my $val = get_byte_at( $memory, $decoded_addr );
+            $def_symbols->{ $label } = $val;
+
             my $label_text = ( $label ? sprintf( "%s = 0x%02X", $label, $val ) : '' );
             my $line = sprintf( "byte[ 0x%04X (%s) ] = 0x%02X (%d)", $decoded_addr, $addr, $val, $val );
-            printf "%-50s | %s\n", ($label_text || ''), $line;
+            printf "%-${out_width}s | %s\n", ($label_text || ''), $line;
         },
     'pw' => sub {
             my ( $label, $addr ) = @_;
             my $decoded_addr = decode_number( $addr ) || resolve_symbol( $addr );
-            defined( $decoded_addr ) or die "Could not resolv address $addr\n";
+            defined( $decoded_addr ) or die "Could not resolve address $addr\n";
             my $val = get_word_at( $memory, $decoded_addr );
+            $def_symbols->{ $label } = $val;
+
             my $label_text = ( $label ? sprintf( "%s = 0x%04X", $label, $val ) : '' );
             my $line = sprintf( "word[ 0x%04X (%s) ] = 0x%04X (%d)", $decoded_addr, $addr, $val, $val );
-            printf "%-50s | %s\n", ($label_text || ''), $line;
+            printf "%-${out_width}s | %s\n", ($label_text || ''), $line;
         },
     'pl' => sub {
             my ( $label, $addr) = @_;
             my $decoded_addr = decode_number( $addr ) || resolve_symbol( $addr );
-            defined( $decoded_addr ) or die "Could not resolv address $addr\n";
+            defined( $decoded_addr ) or die "Could not resolve address $addr\n";
             my $val = get_long_at( $memory, $decoded_addr );
+            $def_symbols->{ $label } = $val;
+
             my $label_text = ( $label ? sprintf( "%s = 0x%08X", $label, $val ) : '' );
             my $line = sprintf( "long[ 0x%04X (%s) ] = 0x%08X (%d)\n", $decoded_addr, $addr, $val, $val );
-            printf "%-50s | %s\n", ($label_text || ''), $line;
+            printf "%-${out_width}s | %s\n", ($label_text || ''), $line;
+        },
+    'def' => sub {
+            my ( $label, $addr ) = @_;
+            my $decoded_addr = decode_number( $addr ) || resolve_symbol( $addr );
+            defined( $decoded_addr ) or die "Could not resolve address $addr\n";
+            $def_symbols->{ $label } = $decoded_addr;
+
+            my $line = sprintf( "def %s = 0x%04X (%d)", $label, $decoded_addr, $decoded_addr );
+            printf "%-${out_width}s\n", $line;
         },
 };
 
