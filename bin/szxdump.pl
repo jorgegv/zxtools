@@ -55,11 +55,30 @@ sub summary_SPCR {
     );
 }
 
+sub summary_Z80R {
+    my $block = shift;
+    my $data = $block->{'data'};
+    return (
+        'Registers (hex):',
+        sprintf( "  AF : 0x%04X   BC : 0x%04X   DE : 0x%04X   HL : 0x%04X",
+            map { $data->{$_} } qw( af bc de hl ) ),
+        sprintf( "  AF': 0x%04X   BC': 0x%04X   DE': 0x%04X   HL': 0x%04X",
+            map { $data->{$_} } qw( af1 bc1 de1 hl1 ) ),
+        sprintf( "  IX : 0x%04X   IY : 0x%04X",
+            map { $data->{$_} } qw( ix iy ) ),
+        sprintf( "  SP : 0x%04X   PC : 0x%04X",
+            map { $data->{$_} } qw( sp pc ) ),
+        sprintf( "  I: 0x%02X   R: 0x%02X   IFF1: %1d   IFF2: %1d   IM: %1d",
+            map { $data->{$_} } qw( i r iff1 iff2 im ) ),
+    );
+}
+
 ## Dispatch table
 my $block_summary_function = {
     'CRTR' => \&summary_CRTR,
     'RAMP' => \&summary_RAMP,
     'SPCR' => \&summary_SPCR,
+    'Z80R' => \&summary_Z80R,
 };
 
 ##
@@ -101,14 +120,14 @@ foreach my $block ( @{ $szx->{'blocks'} } ) {
     if ( not defined( $bank_to_dump ) ) {
         printf "[ Type: %-4s, Block Size: %d bytes ]\n", map { $block->{ $_ } } qw( id size );
         if ( defined( $block_summary_function->{ $block->{'id'} } ) ) {
-            my $summary = $block_summary_function->{ $block->{'id'} }( $block );
-            printf "   %s\n", $summary;
+            my @summary_lines = $block_summary_function->{ $block->{'id'} }( $block );
+            printf "   %s\n", join( "\n   ", @summary_lines );
         }
     } else {
         if ( ( $block->{'id'} eq 'RAMP' ) and ( $block->{'data'}{'pageno'} == $bank_to_dump ) ) {
             printf "[ Type: %-4s, Block Size: %d bytes ]\n", map { $block->{ $_ } } qw( id size );
-            my $summary = $block_summary_function->{ $block->{'id'} }( $block );
-            printf "   %s\n", $summary;
+            my @summary_lines = $block_summary_function->{ $block->{'id'} }( $block );
+            printf "   %s\n", join( "\n   ", @summary_lines );
 
             my @dump_lines;
             my @dump_bytes = unpack( 'C*', $block->{'data'}{'uncompressed_data'} );

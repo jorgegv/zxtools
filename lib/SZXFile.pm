@@ -105,11 +105,42 @@ sub szx_decode_SPCR {
     }
 }
 
+# Z80 Registers record
+sub szx_decode_Z80R {
+    my $data = shift;
+    my ( $af,$bc,$de,$hl,$af1,$bc1,$de1,$hl1,$ix,$iy,$sp,$pc,$i,$r,$iff1,$iff2,$im,
+        $cycles_start,$hold_int_req_cycles,$flags,$mem_ptr ) = unpack( "SSSSSSSSSSSSCCCCCLCCS", $data );
+    return {
+        af			=> $af,
+        bc			=> $bc,
+        de			=> $de,
+        hl			=> $hl,
+        af1			=> $af1,
+        bc1			=> $bc1,
+        de1			=> $de1,
+        hl1			=> $hl1,
+        ix			=> $ix,
+        iy			=> $iy,
+        sp			=> $sp,
+        pc			=> $pc,
+        i			=> $i,
+        r			=> $r,
+        iff1			=> $iff1,
+        iff2			=> $iff2,
+        im			=> $im,
+        cycles_start		=> $cycles_start,
+        hold_int_req_cycles	=> $hold_int_req_cycles,
+        flags			=> $flags,
+        mem_ptr			=> $mem_ptr,
+    };
+}
+
 ## Dispatch tables
 $block_decode_function = {
     'CRTR' => \&szx_decode_CRTR,
     'RAMP' => \&szx_decode_RAMP,
     'SPCR' => \&szx_decode_SPCR,
+    'Z80R' => \&szx_decode_Z80R,
 };
 
 sub szx_decode_block {
