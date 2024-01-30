@@ -208,7 +208,7 @@ my %tile_output_format = (
     },
     header1 => {
         'c'	=> "uint8_t %s_pixels[ %d ] = {\n",
-        'asm'	=> "PUBLIC %s_pixels\n",
+        'asm'	=> "PUBLIC %s_pixels\t;; %d bytes\n",
     },
     header2 => {
         'c'	=> "",
@@ -220,7 +220,7 @@ my %tile_output_format = (
     },
     output1 => {
         'c'	=> "\t0x%02x,\t\t// pix: %s",
-        'asm'	=> "\t\$%02x\t\t;; pix: %s",
+        'asm'	=> "\tdb\t\$%02x\t\t;; pix: %s",
     },
     comment3 => {
         'c'	=> "\t// row: %d, col: %d\n",
@@ -248,7 +248,7 @@ my %tile_output_format = (
     },
     header3 => {
         'c'	=> "uint8_t %s_attr[ %d ] = {\n",
-        'asm'	=> "PUBLIC %s_attr\n",
+        'asm'	=> "PUBLIC %s_attr\t;; %d attributes\n",
     },
     header4 => {
         'c'	=> "",
