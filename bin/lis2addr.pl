@@ -31,7 +31,7 @@ close MAP;
 
 #print Dumper( \%symbols );
 
-my $current_addr = undef;
+my $current_addr = 0;
 my $current_start = undef;
 
 open LIS, $opt_l or
