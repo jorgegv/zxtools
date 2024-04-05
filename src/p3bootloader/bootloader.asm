@@ -29,9 +29,8 @@ defc LOADER_ADDRESS		= 0x8000
 
 defc SECTOR_SIZE		= 512
 
-	;; start here with allram-4763, di
+	;; start here with allram-4763, di, SP = 0xfe00
 	org 0xfe10
-	ld sp,0xfdff			;; stack below this bootloader
 
 	;; switch mode and start motor
 	call set_mode_allram_0123	;; page 3 still at top, stack safe
@@ -74,7 +73,9 @@ set_mode_usr0:
 	ld bc,0x7ffd
 	ld a,0x10			;; b0-b2: page 0 at $C000; b3: screen at page 5; b4: 48K rom
 	out (c),a
-
+	ld a, $0c                       ;; 0000 1100 (motor ON BH rom ON -ROM 48k-)
+	ld b, $1f
+	out (c), a
 	ld sp,0x7fff			;; stack below loader
 	jp 0x8000			;; jump to loader
 
@@ -229,9 +230,11 @@ fdc_seek_track:
 	call fdc_send_command
 	jp nc,fdc_panic
 
-	;; receive results
-	call fdc_receive_results
-	jp nc,fdc_panic
+	;; check status - this command does not receive results
+	ld bc,FDC_STATUSW
+	in a,(c)
+	and 0x80
+	jp z,fdc_panic
 
 	ret
 
