@@ -163,7 +163,9 @@ foreach my $track ( 0 .. 39 ) {
     print DSK $boot_sector;
 
     # remaining sectors
-    print DSK pack( "C*", (0) x ( $dsk->{'sector_size'} * 8 ) );
+    foreach my $sector ( 1 .. 8 ) {
+        print DSK pack( "C*", ( 0xA0 + $sector ) x $dsk->{'sector_size'} );
+    }
 }
 
 close DSK;

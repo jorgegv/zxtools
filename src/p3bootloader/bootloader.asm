@@ -5,22 +5,24 @@
 ;; at offset 0x10. The first 16 bytes are a disk identification record that
 ;; describes the format of the disk.
 
-;; +3 Startup sequence:
+;; The +3 Startup sequence is as follows:
 ;;
 ;; - ALLRAM-4-7-6-3 configuration is set
 ;; - Boot sector is loaded by ROM at 0xfe00
 ;; - Interrupts are disabled
+;; - SP is set to 0xfe00 (just below bootloader)
 ;; - Execution jumps to bootloader code at 0xfe10 (this program)
 
 ;; This bootloader does the following:
 ;;
 ;; - Switch to ALLRAM-0-1-2-3 configuration: we need to have bank 2 in the
 ;;   same position as USR0 mode 5-2-0, that is, page 2 at 0x8000.
-;; - Load sectors 2-9 from track 0 (loader must be stored there) to 0x8000
+;; - Load sectors 2-9 from track 0 (loader must be stored there) to 0x8000.
+;;   This gives 4K for the game loader, more than enough
 ;; - Copy the set_mode_usr0 routine to just below 0xc000 (page 2) and jump
-;;   to it. This routine does the following 2 steps
+;;   to it. This routine does the following:
 ;; - Switch to USR0 mode 5-2-0 configuration
-;; - Jump to 0x8000 with interrupts disabled
+;; - Jump to the loader (0x8000) with interrupts disabled
 
 defc USR0_ROUTINE_SIZE		= end_set_mode_usr0 - set_mode_usr0
 defc USR0_ROUTINE_FINAL_ADDR	= 0xc000 - USR0_ROUTINE_SIZE
@@ -33,7 +35,7 @@ defc SECTOR_SIZE		= 512
 	org 0xfe10
 
 	;; switch mode and start motor
-	call set_mode_allram_0123	;; page 3 still at top, stack safe
+	call set_mode_allram_0123
 
 	;; load loader to 0x8000
 	call load_loader_from_disk
@@ -44,14 +46,6 @@ defc SECTOR_SIZE		= 512
 	;; switch to USR0 and jump to loader
 	jp USR0_ROUTINE_FINAL_ADDR
 
-;; copies USR0 routine to final destination
-copy_usr0_routine:
-	ld hl,set_mode_usr0
-	ld de,USR0_ROUTINE_FINAL_ADDR
-	ld bc,USR0_ROUTINE_SIZE
-	ldir
-	ret
-
 ;; set RAM pages to 0-1-2-3
 set_mode_allram_0123:
 	ld bc,0x1ffd
@@ -59,9 +53,18 @@ set_mode_allram_0123:
 	out (c),a
 	ret
 
+;; loads the loader from track 0, sectors 2 to end of track
 load_loader_from_disk:
 	ld hl,LOADER_ADDRESS
 	call fdc_load_track0
+	ret
+
+;; copies USR0 routine to final destination
+copy_usr0_routine:
+	ld hl,set_mode_usr0
+	ld de,USR0_ROUTINE_FINAL_ADDR
+	ld bc,USR0_ROUTINE_SIZE
+	ldir
 	ret
 
 ;; This routine is copied to the end of page 2, just below 0xc000, so that
@@ -73,27 +76,31 @@ set_mode_usr0:
 	ld bc,0x7ffd
 	ld a,0x10			;; b0-b2: page 0 at $C000; b3: screen at page 5; b4: 48K rom
 	out (c),a
-	ld a, $0c                       ;; 0000 1100 (motor ON BH rom ON -ROM 48k-)
-	ld b, $1f
+	ld a, 0x0c			;; 0000 1100 (motor ON BH rom ON -ROM 48k-)
+	ld b, 0x1f			;; will out to 0x1ffd
 	out (c), a
-	ld sp,0x7fff			;; stack below loader
+	ld sp,0x8000			;; put stack just below loader
 	jp 0x8000			;; jump to loader
 
 end_set_mode_usr0:
 	
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; FDC driver functions
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;                                                        ;;
+;;                  FDC DRIVER FUNCTIONS                  ;;
+;;                                                        ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-defc FDC_CONTROL 		= $3f
-defc FDC_CONTROLW		= $3ffd
-defc FDC_STATUS			= $2f
-defc FDC_STATUSW		= $2ffd
+defc FDC_CONTROL	= $3ffd
+defc FDC_STATUS		= $2ffd
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; small delay utility function
+;; small delay
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 fdc_small_delay:
+
 	ld a,$05
+
 fdc_small_delay_loop:
         dec a
 	nop
@@ -104,7 +111,10 @@ fdc_small_delay_loop:
 ;; sends command to FDC
 ;; DE = address of command
 ;; comand data: 1 byte for length, N command bytes
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 fdc_send_command:
+
 	ld a,(de)					;; get command length
 	ld b,a						;; B = num of bytes to send
 
@@ -115,7 +125,8 @@ send_cmd_next_byte:
 	push af						;; save command byte for later
 
 	;; wait until ready
-	ld bc,FDC_STATUSW
+	ld bc,FDC_STATUS
+
 send_cmd_status_not_ready:
 	in a,(c)					;; read status
 	add a,a         				;; bit 7->C, bit 6->7
@@ -127,13 +138,13 @@ send_cmd_status_not_ready:
 
 	;; send command byte
         pop af						;; restore command byte
-	ld bc,FDC_CONTROLW
+	ld bc,FDC_CONTROL
 	out (c),a
 
-	;; delay
+	;; let the FDC breathe :-)
 	call fdc_small_delay
 
-	;; go with the next byte
+	;; continue with next byte
 	pop bc						;; restore counter
 	djnz send_cmd_next_byte
 
@@ -143,26 +154,31 @@ send_cmd_status_not_ready:
 send_cmd_abort:
 	pop af		;; old BC
 	pop af
+	or a		;; reset C
 	ret
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; receive results of previous cmd from FDC
+;; not all commands generate results
 ;; no inputs
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 fdc_receive_results:
+
 	ld hl,fdc_status_data				;; results buffer
+
 fdc_rec_res_loop:
-	ld bc,FDC_STATUSW
+	ld bc,FDC_STATUS
 	in a,(c)
 	cp 0xc0						;; bits 6-7 are 1 ?
 	jr c,fdc_rec_res_loop				;; if not, FDC still busy, retry
 
-	ld bc,FDC_CONTROLW
+	ld bc,FDC_CONTROL
 	ini						;; read byte and inc HL
 	
 	call fdc_small_delay
 
-	ld bc,FDC_STATUSW				;; check status again
+	ld bc,FDC_STATUS				;; check status again
 	in a,(c)
 	and 0x10					;; nz: command in progress
 	jr nz,fdc_rec_res_loop
@@ -174,10 +190,12 @@ fdc_rec_res_loop:
 	scf						;; C = no error
 	ret
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; load all sectors from track 0  to HL, starting from 2
 ;; Sector 1 is this bootloader
 ;; HL = destination address
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 fdc_load_track0:
 
 	push hl
@@ -185,7 +203,7 @@ fdc_load_track0:
 	xor a						;; seek to track 0
 	call fdc_seek_track
 
-	;; all data is ready in the struct
+	;; all data is already in the struct
 	ld de,data_cmd_read_delete
 	call fdc_send_command
 	jp nc,fdc_panic
@@ -194,16 +212,20 @@ fdc_load_track0:
 	pop hl
 	call fdc_read_bytes
 
+	;; when finished, dump results
 	call fdc_receive_results
 	jp nc,fdc_panic
 
 	ret
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; read sector bytes
 ;; HL = destination address
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 fdc_read_bytes:
-	ld bc,FDC_STATUSW
+
+	ld bc,FDC_STATUS
 
 fdc_rd_wait_ok:
 	in a,(c)
@@ -211,17 +233,20 @@ fdc_rd_wait_ok:
 	and 0x20					;; check for execution phase
 	jr z,fdc_rd_end					;; if Z, finished
 
-	ld bc,FDC_CONTROLW
+	ld bc,FDC_CONTROL
 	ini						;; read byte into (HL) and inc HL
 
 	jr fdc_read_bytes
 fdc_rd_end:
 	ret
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; seek to track N
 ;; A = track number
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 fdc_seek_track:
+
 	;; set track in command data struct
 	ld (data_cmd_seek_track+3),a
 
@@ -230,25 +255,35 @@ fdc_seek_track:
 	call fdc_send_command
 	jp nc,fdc_panic
 
-	;; check status - this command does not receive results
-	ld bc,FDC_STATUSW
+	;; check status - prev cmd does not receive results
+	ld bc,FDC_STATUS
 	in a,(c)
 	and 0x80
 	jp z,fdc_panic
+
+	;; sense interrupt status after seek
+	ld de,data_cmd_sense_interrupt_status
+	call fdc_send_command
+	jp nc,fdc_panic
+
+	;; this cmd receives results
+	call fdc_receive_results
+	jp nc,fdc_panic
 
 	ret
 
 ;; unrecoverable errors end here
 fdc_panic:
+	ld a,2		;; set red border
+	out (0xfe),a
 	di
 	halt
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; FDC Driver data
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; command blocks
+;; command data blocks
 ;; comand data: 1 byte for length, N command bytes
 data_cmd_read_delete:
 	db 0x09		;; length = 9 bytes
@@ -257,10 +292,10 @@ data_cmd_read_delete:
 	db 0x00		;; track
 	db 0x00		;; head
 	db 0x02		;; initial sector to read
-	db 0x02		;; sector size - 2=512
+	db 0x02		;; sector size: 2=512
 	db 0x09		;; last sector to read
 	db 0x2A		;; gap length
-	db 0xff		;; unused here
+	db 0xff		;; unused
 
 data_cmd_seek_track:
 	db 0x03		;; length = 3 bytes
@@ -268,11 +303,11 @@ data_cmd_seek_track:
 	db 0x00		;; disk unit
 	db 0x00		;; track
 
-data_cmd_sense_status:
+data_cmd_sense_interrupt_status:
 	db 0x01		;; length = 1 byte
 	db 0x08		;; command id
 
-data_cmd_read_unit_id:
+data_cmd_read_id:
 	db 0x02		;; length = 2 byes
 	db 0x4a		;; command id
 	db 0x00		;; param
