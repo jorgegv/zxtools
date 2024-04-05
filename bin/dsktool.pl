@@ -140,20 +140,22 @@ getopts("b:o:");
 my $bootloader = $opt_b;
 my $output_dsk = $opt_o;
 
+open my $boot, $bootloader or
+    die "Could not open $bootloader for reading: $@\n";
+binmode( $boot);
+my $bootloader_code;
+my $bootloader_size = read( $boot, $bootloader_code, 65536 );
+defined( $bootloader_size ) or
+    die "Error reading from $bootloader\n";
+printf "Bootloader code: %s bytes\n", $bootloader_size;
+close $boot;
+
 open DSK, ">$output_dsk" or
     die "Could not open $output_dsk for writing: $@\n";
-
 binmode(DSK);
 print DSK disk_info_block_bytes;
 
-# test bootloader
-#     2   000000 210080                  ld hl,$8000
-#     3   000003 362f                    ld (hl),47
-#     4   000005 f3                      di
-#     5   000006 76                      halt
-my $test_bootloader_code = pack("C*",0x21,0x00,0x80,0x36,0x2f,0xf3,0x76 );
-
-my $boot_sector = build_boot_sector( $test_bootloader_code );
+my $boot_sector = build_boot_sector( $bootloader_code );
 
 foreach my $track ( 0 .. 39 ) {
     print DSK track_info_block_bytes( $track, 0 );
