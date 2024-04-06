@@ -129,43 +129,104 @@ sub build_boot_sector {
     return $sector_bytes;
 }
 
+sub load_binary {
+    my $file = shift;
+    open my $bin, $file or
+        die "Could not open $file for reading: $@\n";
+    binmode( $bin );
+    my $code;
+    my $size = read( $bin, $code, 65536 );	# max size
+    defined( $size ) or
+        die "Error reading from $file\n";
+    close $bin;
+    return $code;
+}
+
+# splits a binary in tracks of the needed track size.  The returned tracks
+# are all full size.  The unused bytes in the final track are padded with
+# the configured filler byte
+sub split_binary_in_tracks {
+    my $binary;
+    my $track_size = $dsk->{'num_sectors'} * $dsk->{'sector_size'};
+
+    my @tracks;
+    my $offset = 0;
+    my $remaining_bytes = length( $binary );
+    while ( $remaining_bytes ) {
+        my $real_size = ( $remaining_bytes > $track_size ? $track_size : $remaining_bytes );
+        my $track_bytes = substr( $binary, $offset, $real_size );
+        $offset += $real_size;
+        $remaining_bytes -= $real_size;
+        # if the final track is less than track size, pad with filler byte
+        if ( length( $track_bytes ) < $track_size ) {
+            $track_bytes .= pack( "C*", ( $dsk->{'filler_byte'} ) x ( $track_size - length( $track_bytes ) ) );
+        }
+        push @tracks, $track_bytes;
+    }
+    return @tracks;
+}
+
 #####################
 ## Main
 #####################
 
-our ( $opt_b, $opt_o );
-getopts("b:o:");
-( defined( $opt_b ) and defined( $opt_o ) ) or
+our ( $opt_b, $opt_o, $opt_l );
+getopts("b:o:l:");
+( defined( $opt_b ) and defined( $opt_o ) and defined( $opt_l ) ) or
     show_usage;
 my $bootloader = $opt_b;
 my $output_dsk = $opt_o;
+my $loader = $opt_l;
+my @binaries = @ARGV;
 
-open my $boot, $bootloader or
-    die "Could not open $bootloader for reading: $@\n";
-binmode( $boot);
-my $bootloader_code;
-my $bootloader_size = read( $boot, $bootloader_code, 65536 );
-defined( $bootloader_size ) or
-    die "Error reading from $bootloader\n";
-printf "Bootloader code: %s bytes\n", $bootloader_size;
-close $boot;
+say "";
+say "DSKTOOL - Generate a bootable ZX Spectrum +3 disc image";
+say "  Bootloader:   $bootloader";
+say "  Loader:       $loader";
+say "  Binaries:     ". join( ", ", @binaries );
+say "  Output image: $output_dsk";
+say "";
 
+my $bootloader_code = load_binary( $bootloader );
+printf "Bootloader size is %d bytes\n", length( $bootloader_code );
+
+my $loader_code = load_binary( $loader );
+printf "Loader size is %d bytes\n", length( $loader_code );
+
+# start generating the disk image
 open DSK, ">$output_dsk" or
     die "Could not open $output_dsk for writing: $@\n";
 binmode(DSK);
+
+# image header
 print DSK disk_info_block_bytes;
 
-my $boot_sector = build_boot_sector( $bootloader_code );
+# track 0
+print DSK track_info_block_bytes( 0, 0 );
+print DSK build_boot_sector( $bootloader_code );
+print DSK $loader_code;
+# pad to 9 sectors
+print DSK pack( "C*", ( $dsk->{'filler_byte'} ) x ( $dsk->{'sector_size'} * 8 - length( $loader_code ) ) );
 
-foreach my $track ( 0 .. 39 ) {
-    print DSK track_info_block_bytes( $track, 0 );
-
-    print DSK $boot_sector;
-
-    # remaining sectors
-    foreach my $sector ( 1 .. 8 ) {
-        print DSK pack( "C*", ( 0xA0 + $sector ) x $dsk->{'sector_size'} );
-    }
+# generate the data tracks
+my @data_tracks;
+foreach my $bin ( @binaries ) {
+    push @data_tracks, split_binary_in_tracks( load_binary( $bin ) );
 }
 
+# output tracks 1 to end of disk - data tracks first
+my $current_track = 1;
+
+foreach my $track_bytes ( @data_tracks ) {
+    print DSK track_info_block_bytes( $current_track, 0 );
+    print DSK $track_bytes;
+    $current_track++;
+}
+
+# if 40 tracks were not output, output the remaining tracks with filler byte
+while ( $current_track < 40 ) {
+    print DSK track_info_block_bytes( $current_track, 0 );
+    print DSK pack( "C*", ( $dsk->{'filler_byte'} ) x ( $dsk->{'sector_size'} * $dsk->{'num_sectors'} ) );
+    $current_track++;
+}
 close DSK;
