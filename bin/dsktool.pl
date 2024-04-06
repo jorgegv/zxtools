@@ -7,7 +7,7 @@ use Data::Dumper;
 
 sub show_usage {
     die <<EOF_USAGE
-usage: $0 -b <bootloader.bin> -o <output.dsk>
+usage: $0 -b <bootloader.bin> -l <loader.bin> -o <output.dsk> <file1.bin> <file2.bin> ...
 EOF_USAGE
 ;
 }
@@ -179,19 +179,19 @@ my $output_dsk = $opt_o;
 my $loader = $opt_l;
 my @binaries = @ARGV;
 
-say "";
-say "DSKTOOL - Generate a bootable ZX Spectrum +3 disc image";
-say "  Bootloader:   $bootloader";
-say "  Loader:       $loader";
-say "  Binaries:     ". join( ", ", @binaries );
-say "  Output image: $output_dsk";
-say "";
-
 my $bootloader_code = load_binary( $bootloader );
-printf "Bootloader size is %d bytes\n", length( $bootloader_code );
 
 my $loader_code = load_binary( $loader );
-printf "Loader size is %d bytes\n", length( $loader_code );
+
+say "";
+say "DSKTOOL - Generate a bootable ZX Spectrum +3 disc image";
+say "  Bootloader:      $bootloader";
+printf "  Bootloader size: %d bytes\n", length( $bootloader_code );
+say "  Loader:          $loader";
+printf "  Loader size:     %d bytes\n", length( $loader_code );
+print "  Binaries:        ";
+say join( "\n                   ", @binaries );
+say "  Output image:    $output_dsk";
 
 # start generating the disk image
 open DSK, ">$output_dsk" or
