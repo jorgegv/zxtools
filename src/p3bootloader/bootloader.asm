@@ -1,5 +1,5 @@
 ;; Bootloader code for +3 boot disks, by ZXjogv <zx@jogv.es>
-;; Heavily based on code from Xor_A [Fer], esp. wrt magic numbers
+;; Partially based on code from Xor_A [Fer], esp. wrt magic numbers
 
 ;; This code is stored in the boot sector (track 0, sector 0) of a bootable +3 disk,
 ;; at offset 0x10. The first 16 bytes are a disk identification record that
