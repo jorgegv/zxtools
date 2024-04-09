@@ -39,7 +39,7 @@ load_success:
 	halt
 
 load_error:
-	ld a,0x02	;; red
+	ld a,0x06	;; yellow
 	out (0xfe),a	;; set border
 	di
 	halt

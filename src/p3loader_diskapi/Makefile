@@ -19,3 +19,10 @@ testdsk:
 
 clean:
 	-rm -f *.bin *.lis *.o *.map
+
+run:
+	fuse test.dsk
+
+BREAKPOINT	= 8000
+debug:
+	fuse --debugger-command 'br $$$(BREAKPOINT)' test.dsk

@@ -7,6 +7,7 @@
 defc FDC_CONTROL	= $3ffd
 defc FDC_STATUS		= $2ffd
 defc FDC_TRACK_SIZE	= 4608	;; 512 * 9
+defc FDC_SECTOR_SIZE	= 512
 
 public fdc_load_bytes
 
@@ -47,7 +48,10 @@ fdc_ld_bytes_loop_full_track:
 	ld c,9				;; end sector
 	push ix
 	pop hl				;; HL = current dest address
+
+	push ix
 	call fdc_load_sectors
+	pop ix
 
 	ld bc,FDC_TRACK_SIZE
 	add ix,bc			;; update dest address
@@ -62,48 +66,69 @@ fdc_ld_bytes_loop_full_track:
 	;; load partial track
 fdc_ld_bytes_partial_track:
 	pop de				;; DE = remaining bytes
-	push de				;; save again
+	push de				;; save for later calculation
 
-	ld a,d				;; discard 9 low bits of DE
-	and 0xfe
-	ld d,a
-	ld e,0				;; DE = remaining bytes / 512
-
-	pop hl				;; HL = remaining bytes
-	push hl				;; save again
+	;; DE here = remaining bytes
+	;; if remaining bytes < sector size, skip to partial last sector load
+	ld hl,FDC_SECTOR_SIZE
 	or a
-	sbc hl,de			;; HL = remaining bytes after partial track load
-					;; will be remaining bytes % 512
+	sbc hl,de
+	jr nc,fdc_ld_bytes_last_sector
 
-	push hl				;; save future remaining bytes for later
+	ld a,d				;; DE = remaining bytes / 512
+	and 0xfe			;; discard 9 low bits of DE
+	ld d,a
+	ld e,0
 
 	push de				;; save bytes to load for later
 
 	ld a,(fdc_current_track)	;; track
 	ld b,1				;; start sector
 	ld c,d
-	srl c				;; C = remaining bytes / 512 (end sector)
-	
+	srl c				;; C = end sector (remaining bytes/512)
+
 	push ix
 	pop hl				;; HL = dest address
+
+	push ix
 	call fdc_load_sectors
+	pop ix
 
 	pop de				;; DE = bytes loaded (saved above)
 	add ix,de			;; update dest address
 
+	pop hl				;; HL = previous remaining bytes
+	push hl				;; expected by next section
+
+	sbc hl,de			;; HL = current remaining bytes
+
+	ld de,hl			;; DE = current remaining bytes
+
 fdc_ld_bytes_last_sector:
-	pop de				;; DE = remaining bytes (always < 512)
-	pop hl				;; recover remaining bytes before last load
-	ld b,h
-	srl b				;; B = last full sector (remaining bytes before / 512)
+	;; DE here contains the last remaining bytes in all cases
+	ld a,d
+	or e
+	jr z,fdc_ld_bytes_inc_track	;; if remaining bytes == 0, skip to end
+
+	pop de				;; DE = previous remaining bytes
+	ld b,d
+	srl b
 	inc b				;; B = last full sector + 1
+
 	ld a,(fdc_current_track)	;; A = track
 
 	push ix
 	pop hl				;; HL = dest address
-	call fdc_load_partial_sector
 
-	scf
+	push ix
+	call fdc_load_partial_sector
+	pop ix
+
+fdc_ld_bytes_inc_track:
+	ld hl,fdc_current_track		;; inc current track
+	inc (hl)
+
+	scf				;; signal success
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -209,6 +234,7 @@ fdc_rec_res_loop:
 ;; B = initial sector ID
 ;; C = final sector ID
 ;; HL = destination address
+;; Trashes IX
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 fdc_load_sectors:
@@ -271,6 +297,7 @@ fdc_rd_end:
 ;; B = sector ID
 ;; DE = number of bytes to read
 ;; HL = destination address
+;; Trashes IX
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 fdc_load_partial_sector:
@@ -374,7 +401,7 @@ fdc_seek_track:
 
 ;; unrecoverable errors end here
 fdc_panic:
-	ld a,2		;; set red border
+	ld a,0x03		;; set magenta border
 	out (0xfe),a
 	di
 	halt
