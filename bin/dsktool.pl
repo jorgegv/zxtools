@@ -146,7 +146,7 @@ sub load_binary {
 # are all full size.  The unused bytes in the final track are padded with
 # the configured filler byte
 sub split_binary_in_tracks {
-    my $binary;
+    my $binary = shift;
     my $track_size = $dsk->{'num_sectors'} * $dsk->{'sector_size'};
 
     my @tracks;
