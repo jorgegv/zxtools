@@ -8,6 +8,8 @@ defc FDC_CONTROL	= $3ffd
 defc FDC_STATUS		= $2ffd
 defc FDC_TRACK_SIZE	= 4608	;; 512 * 9
 
+public fdc_load_bytes
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; MAIN API FUNCTION FOR THE LOADER
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
