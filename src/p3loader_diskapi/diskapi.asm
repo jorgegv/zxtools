@@ -9,6 +9,7 @@ defc FDC_STATUS		= $2ffd
 defc FDC_TRACK_SIZE	= 4608	;; 512 * 9
 defc FDC_SECTOR_SIZE	= 512
 
+;; this is the only function that should be used from this API
 public fdc_load_bytes
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -22,21 +23,19 @@ public fdc_load_bytes
 ;; A = 0xff (ignored)
 ;; Returns: C flag set if success, reset if error
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 fdc_load_bytes:
-	ex de,hl		;; HL = bytes to load
-
-	push hl			;; save remaining bytes
+	ex de,hl			;; HL = bytes to load
+	push hl				;; save remaining bytes
 
 	;; IX maintains the current destination address during all the
-	;; routine
-
+	;; routine. The subroutines that are called by this one all
+	;; preserve IX
 
 fdc_ld_bytes_loop_full_track:
 	;; HL here = remaining bytes
 	;; if remaining bytes < track size, skip to partial track load
 	ld de,FDC_TRACK_SIZE
-	or a			;; reset carry
+	or a				;; reset carry
 	sbc hl,de
 	jr c,fdc_ld_bytes_partial_track
 
@@ -59,7 +58,7 @@ fdc_ld_bytes_loop_full_track:
 
 	pop hl				;; HL = remaining bytes
 	push hl
-	jr fdc_ld_bytes_loop_full_track	;; repeat until < full track remains
+	jr fdc_ld_bytes_loop_full_track	;; repeat until remaining bytes < full track
 
 	;; load partial track
 fdc_ld_bytes_partial_track:
@@ -128,7 +127,6 @@ fdc_ld_bytes_inc_track:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; small delay
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 fdc_small_delay:
 	ld a,$05
 fdc_small_delay_loop:
@@ -252,7 +250,6 @@ fdc_read_id:
 ;; C = final sector ID
 ;; HL = destination address
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 fdc_load_sectors:
 
 	push ix
@@ -301,7 +298,6 @@ fdc_ld_end:
 ;; read sector bytes
 ;; HL = destination address
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 fdc_read_bytes:
 
 	call fdc_wait_ready_to_send
@@ -326,7 +322,6 @@ fdc_rd_end:
 ;; DE = number of bytes to read
 ;; HL = destination address
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 fdc_load_partial_sector:
 
 	push ix
@@ -379,7 +374,6 @@ fdc_ld_p_end:
 ;; DE = number of bytes to read from FDC
 ;; HL = destination address
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 fdc_read_n_bytes:
 
 	call fdc_wait_ready_to_send
@@ -413,7 +407,6 @@ fdc_rd_n_end:
 ;; seek to track N
 ;; A = track number
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 fdc_seek_track:
 
 	push af				;; save A
