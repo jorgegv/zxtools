@@ -116,9 +116,7 @@ fdc_ld_bytes_last_sector:
 	push ix
 	pop hl				;; HL = dest address
 
-	push ix
 	call fdc_load_partial_sector
-	pop ix
 
 fdc_ld_bytes_inc_track:
 	ld hl,fdc_current_track		;; inc current track
@@ -329,10 +327,11 @@ fdc_rd_end:
 ;; B = sector ID
 ;; DE = number of bytes to read
 ;; HL = destination address
-;; Trashes IX
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 fdc_load_partial_sector:
+
+	push ix
 
 	push hl
 	push de
@@ -375,9 +374,12 @@ fdc_load_partial_sector:
 	jp nc,fdc_panic
 
 	ld a,(fdc_status_data+1)	;; check ST1 register status
-	ret nz				;; if any bit is set, error
+	jr nz,fdc_ld_p_end		;; if any bit is set, error
 
 	scf				;; success
+
+fdc_ld_p_end:
+	pop ix
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
