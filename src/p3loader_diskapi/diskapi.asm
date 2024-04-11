@@ -139,11 +139,10 @@ fdc_small_delay_loop:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; waits until FDC is ready to receive commands
-;; trashes A,BC
 ;; no inputs
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_wait_ready_to_receive:
-
+	push af
 	ld bc,FDC_STATUS
 fdc_wait_rec_status_not_ready:
 	in a,(c)					;; read status
@@ -152,6 +151,7 @@ fdc_wait_rec_status_not_ready:
 	;; check data direction is OK, panic if not
 	add a,a						;; bit 7->C (old bit 6)
 	jp c,fdc_panic					;; old bit 6 off: CPU to FDD direction OK
+	pop af
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -159,6 +159,7 @@ fdc_wait_rec_status_not_ready:
 ;; no inputs
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_wait_ready_to_send:
+	push af
 	ld bc,FDC_STATUS
 fdc_wait_send_status_not_ready:
 	in a,(c)					;; BC = FDC_STATUS
@@ -166,6 +167,7 @@ fdc_wait_send_status_not_ready:
 	jr nc,fdc_wait_send_status_not_ready		;; bit 7 off: data register not ready
 	add a,a						;; bit 7->C (old bit 6)
 	jp nc,fdc_panic					;; old bit 6 on: FDD to CPU direction OK
+	pop af
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -182,9 +184,7 @@ send_cmd_next_byte:
 	ld a,(de)					;; A = command byte
 	push bc						;; save counter
 
-	push af
 	call fdc_wait_ready_to_receive
-	pop af
 
 	;; send command byte
 	ld bc,FDC_CONTROL
