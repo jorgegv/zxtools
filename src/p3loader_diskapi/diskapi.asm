@@ -7,7 +7,8 @@
 defc FDC_CONTROL	= $3ffd
 defc FDC_STATUS		= $2ffd
 defc FDC_TRACK_SIZE	= 4608	;; 512 * 9
-defc FDC_SECTOR_SIZE	= 512
+;; sector size is assumed = 512
+
 
 ;; this is the only function that should be used from this API
 public fdc_load_bytes
@@ -73,7 +74,7 @@ fdc_ld_bytes_partial_track:
 
 	;; DE here = remaining bytes
 	;; if remaining bytes < sector size, skip to partial last sector load
-	ld hl,FDC_SECTOR_SIZE
+	ld hl,512
 	or a
 	sbc hl,de
 	jr nc,fdc_ld_bytes_last_sector
@@ -266,6 +267,7 @@ fdc_load_sectors:
 
 	push ix
 	push hl
+	push af
 	push bc
 
 	call fdc_read_id
@@ -277,6 +279,17 @@ fdc_load_sectors:
 
 	;; B,C = start,end sectors
 	pop bc
+
+	ld a,c
+	sub b				;; A = last sector - first sector
+	inc a				;; A = num sectors to load
+	add a,a
+	ld d,a
+	ld e,0				;; DE = A * 512 = bytes to load
+
+	pop af				;; restore A = track
+
+	push de				;; save num bytes
 
 	;; set up data struct
 	ld ix,data_cmd_read_delete
@@ -290,8 +303,9 @@ fdc_load_sectors:
 	jp nc,fdc_panic
 
 	;; start reading bytes into HL
+	pop de				;; recover number of bytes
 	pop hl
-	call fdc_read_bytes
+	call fdc_read_n_bytes
 
 	;; check results
 	call fdc_receive_results	;; read returns ST0, ST1 and ST2
@@ -304,28 +318,6 @@ fdc_load_sectors:
 
 fdc_ld_end:
 	pop ix
-	ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; read sector bytes
-;;
-;; INPUTS:
-;; HL = destination address
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-fdc_read_bytes:
-
-	call fdc_wait_ready_to_send
-
-	ld bc,FDC_STATUS
-	in a,(c)
-	and 0x20			;; check if we are still in execution phase
-	jr z,fdc_rd_end			;; if bit 5 = 0, finished
-
-	ld bc,FDC_CONTROL		;; still in execution phase
-	ini				;; read byte into (HL) and inc HL
-	jr fdc_read_bytes		;; loop
-
-fdc_rd_end:
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
