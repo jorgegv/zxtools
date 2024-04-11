@@ -148,7 +148,7 @@ fdc_wait_ready_to_receive:
 fdc_wait_rec_status_not_ready:
 	in a,(c)					;; read status
 	add a,a         				;; bit 7->C, bit 6->7
-	jr nc,fdc_wait_rec_status_not_ready			;; bit 7 off: data register not ready
+	jr nc,fdc_wait_rec_status_not_ready		;; bit 7 off: data register not ready
 	;; check data direction is OK, panic if not
 	add a,a						;; bit 7->C (old bit 6)
 	jp c,fdc_panic					;; old bit 6 off: CPU to FDD direction OK
@@ -260,9 +260,7 @@ fdc_load_sectors:
 	pop af
 
 	;; A = track number
-	push af
 	call fdc_seek_track
-	pop af
 
 	push af
 	call fdc_read_id
@@ -342,9 +340,7 @@ fdc_load_partial_sector:
 	pop af
 
 	;; A = track number
-	push af
 	call fdc_seek_track
-	pop af
 
 	push af
 	call fdc_read_id
@@ -424,6 +420,8 @@ fdc_rd_n_end:
 
 fdc_seek_track:
 
+	push af				;; save A
+
 	;; set track in command data struct
 	ld (data_cmd_seek_track+3),a
 
@@ -450,6 +448,7 @@ fdc_seek_rec_res_loop:
 	bit 5,a				;; bit 5 = seek complete ?
 	jr z,fdc_seek_rec_res_loop	;; no => retry
 
+	pop af
 	scf
 	ret
 
