@@ -17,6 +17,8 @@ public fdc_load_bytes
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; load bytes sequentially from disk - same interface as
 ;; LD-BYTES routine from 48-ROM
+;;
+;; INPUTS:
 ;; DE = bytes to load
 ;; IX = destination address
 ;; C flag set (ignored)
@@ -30,6 +32,10 @@ fdc_load_bytes:
 	;; IX maintains the current destination address during all the
 	;; routine. The subroutines that are called by this one all
 	;; preserve IX
+
+	;; A and IX registers are preserved across function calls
+	;; BC,DE,HL are not preserved
+	;; IY and the alternate register bank are not used
 
 fdc_ld_bytes_loop_full_track:
 	;; HL here = remaining bytes
@@ -126,6 +132,7 @@ fdc_ld_bytes_inc_track:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; small delay
+;; no inputs
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_small_delay:
 	ld a,$05
@@ -170,8 +177,10 @@ fdc_wait_send_status_not_ready:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sends command to FDC
-;; DE = address of command
 ;; comand data: 1 byte for length (=N), N command bytes
+;;
+;; INPUTS:
+;; DE = address of command
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_send_command:
 
@@ -224,6 +233,7 @@ fdc_rec_res_loop:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; reads ID from FDC - "resets" everything
+;; no inputs
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_read_id:
 	push af
@@ -245,6 +255,8 @@ fdc_read_id:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; load full sectors from track A to address HL
+;;
+;; INPUTS:
 ;; A = track number
 ;; B = initial sector ID
 ;; C = final sector ID
@@ -296,6 +308,8 @@ fdc_ld_end:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; read sector bytes
+;;
+;; INPUTS:
 ;; HL = destination address
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_read_bytes:
@@ -317,6 +331,8 @@ fdc_rd_end:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; read N bytes from a given sector in track A  to HL - only
 ;; stores up to N bytes, without overwriting after that
+;;
+;; INPUTS:
 ;; A = track number
 ;; B = sector ID
 ;; DE = number of bytes to read
@@ -371,6 +387,8 @@ fdc_ld_p_end:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; read N sector bytes - bytes after N are read but discarded
+;;
+;; INPUTS:
 ;; DE = number of bytes to read from FDC
 ;; HL = destination address
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -401,10 +419,10 @@ fdc_rd_n_no_store:
 fdc_rd_n_end:
 	ret
 
-;; HASTA AQUI ESTA REVISADO
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; seek to track N
+;;
+;; INPUTS:
 ;; A = track number
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_seek_track:
@@ -483,7 +501,7 @@ data_cmd_read_id:
 	db 0x4a		;; command id		- DNC
 	db 0x00		;; param		- DNC
 
-;; FDC result data buffer
+;; FDC results data buffer
 fdc_status_data:
 	ds 10		;; reserve 10 bytes
 
