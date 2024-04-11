@@ -110,8 +110,8 @@ fdc_ld_bytes_last_sector:
 	or e
 	jr z,fdc_ld_bytes_inc_track	;; if remaining bytes == 0, skip to end
 
-	pop de				;; DE = previous remaining bytes
-	ld b,d
+	pop hl				;; HL = previous remaining bytes
+	ld b,h
 	srl b
 	inc b				;; B = last full sector + 1
 
