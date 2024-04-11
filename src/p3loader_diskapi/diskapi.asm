@@ -228,6 +228,8 @@ fdc_rec_res_loop:
 ;; reads ID from FDC - "resets" everything
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_read_id:
+	push af
+
 	ld de,data_cmd_read_id
 
 	call fdc_send_command
@@ -239,6 +241,8 @@ fdc_read_id:
 	ld a,(fdc_status_data)		;; read_id returns ST0 first
 	or a
 	jr nz,fdc_read_id		;; wait until ST0 is 0 -> All OK no errors
+
+	pop af
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -255,16 +259,12 @@ fdc_load_sectors:
 	push hl
 	push bc
 
-	push af
 	call fdc_read_id
-	pop af
 
 	;; A = track number
 	call fdc_seek_track
 
-	push af
 	call fdc_read_id
-	pop af
 
 	;; B,C = start,end sectors
 	pop bc
@@ -335,16 +335,12 @@ fdc_load_partial_sector:
 	push de
 	push bc
 
-	push af
 	call fdc_read_id
-	pop af
 
 	;; A = track number
 	call fdc_seek_track
 
-	push af
 	call fdc_read_id
-	pop af
 
 	pop bc
 
