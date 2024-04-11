@@ -136,63 +136,46 @@ fdc_ld_bytes_inc_track:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 fdc_small_delay:
+
 	ld a,$05
+
 fdc_small_delay_loop:
         dec a
 	nop
 	jr nz,fdc_small_delay_loop
 	ret
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; waits until FDC is ready to receive commands
-;; trashes A,BC
-;; no inputs
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-fdc_wait_ready_to_receive:
-
-	ld bc,FDC_STATUS
-fdc_wait_rec_status_not_ready:
-	in a,(c)					;; read status
-	add a,a         				;; bit 7->C, bit 6->7
-	jr nc,fdc_wait_rec_status_not_ready			;; bit 7 off: data register not ready
-	;; check data direction is OK, panic if not
-	add a,a						;; bit 7->C (old bit 6)
-	jp c,fdc_panic					;; old bit 6 off: CPU to FDD direction OK
-	ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; waits until FDC is ready to send data
-;; no inputs
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-fdc_wait_ready_to_send:
-	ld bc,FDC_STATUS
-fdc_wait_send_status_not_ready:
-	in a,(c)					;; BC = FDC_STATUS
-	add a,a						;; bit 7->C, bit 6->7
-	jr nc,fdc_wait_send_status_not_ready		;; bit 7 off: data register not ready
-	add a,a						;; bit 7->C (old bit 6)
-	jp nc,fdc_panic					;; old bit 6 on: FDD to CPU direction OK
-	ret
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; sends command to FDC
 ;; DE = address of command
-;; comand data: 1 byte for length (=N), N command bytes
+;; comand data: 1 byte for length, N command bytes
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 fdc_send_command:
 
 	ld a,(de)					;; get command length
 	ld b,a						;; B = num of bytes to send
+
 send_cmd_next_byte:
 	inc de						;; addres of next byte
 	ld a,(de)					;; A = command byte
 	push bc						;; save counter
+	push af						;; save command byte for later
 
-	push af
-	call fdc_wait_ready_to_receive
-	pop af
+	;; wait until ready
+	ld bc,FDC_STATUS
+
+send_cmd_status_not_ready:
+	in a,(c)					;; read status
+	add a,a         				;; bit 7->C, bit 6->7
+	jr nc,send_cmd_status_not_ready			;; bit 7 off: data register not ready
+
+	;; check data direction is OK, abort if not
+	add a,a						;; bit 7->C (old bit 6)
+	jr c,send_cmd_abort				;; old bit 6 off: CPU to FDD direction OK
 
 	;; send command byte
+        pop af						;; restore command byte
 	ld bc,FDC_CONTROL
 	out (c),a
 
@@ -203,7 +186,13 @@ send_cmd_next_byte:
 	pop bc						;; restore counter
 	djnz send_cmd_next_byte
 
-	scf						;; success
+	scf						;; C = no error
+	ret
+
+send_cmd_abort:
+	pop af		;; old BC
+	pop af
+	or a		;; reset C
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -211,11 +200,17 @@ send_cmd_next_byte:
 ;; not all commands generate results
 ;; no inputs
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 fdc_receive_results:
 
 	ld hl,fdc_status_data		;; results buffer
+
+	ld bc,FDC_STATUS
+
 fdc_rec_res_loop:
-	call fdc_wait_ready_to_send	;; wait until FDC wants to send
+	in a,(c)			;; BC = FDC_STATUS
+	cp 0xc0				;; bits 6-7 are 1 ?
+	jr c,fdc_rec_res_loop		;; if not, FDC still busy, retry
 
 	ld bc,FDC_CONTROL
 	ini				;; read byte from FDC and inc HL
@@ -227,24 +222,6 @@ fdc_rec_res_loop:
 	and 0x10			;; bit 4 = 1: command in progress
 	jr nz,fdc_rec_res_loop		;; more bytes available
 
-	scf				;; success
-	ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; reads ID from FDC - "resets" everything
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-fdc_read_id:
-	ld de,data_cmd_read_id
-
-	call fdc_send_command
-	jp nc,fdc_panic
-
-	call fdc_receive_results
-	jp nc,fdc_panic
-
-	ld a,(fdc_status_data)		;; read_id returns ST0 first
-	or a
-	jr nz,fdc_read_id		;; wait until ST0 is 0 -> All OK no errors
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -260,21 +237,12 @@ fdc_load_sectors:
 
 	push hl
 	push bc
-
 	push af
-	call fdc_read_id
-	pop af
 
 	;; A = track number
-	push af
 	call fdc_seek_track
-	pop af
 
-	push af
-	call fdc_read_id
 	pop af
-
-	;; B,C = start,end sectors
 	pop bc
 
 	;; set up data struct
@@ -282,20 +250,17 @@ fdc_load_sectors:
 	ld (ix+3),a			;; set track nr
 	ld (ix+5),b			;; set start sector
 	ld (ix+7),c			;; set end sector
-
-	;; send read cmd
 	ld de,data_cmd_read_delete	;; command address
 	call fdc_send_command
 	jp nc,fdc_panic
 
-	;; start reading bytes into HL
+	;; start reading bytes
 	pop hl
 	call fdc_read_bytes
 
-	;; check results
-	call fdc_receive_results	;; read returns ST0, ST1 and ST2
-	jp nc,fdc_panic
-
+	;; when finished, dump results to buffer
+	;; read sends back ST0, ST1 and ST2
+	call fdc_receive_results
 	ld a,(fdc_status_data+1)	;; check ST1 register status
 	ret nz				;; if any bit is set, error
 
@@ -309,10 +274,13 @@ fdc_load_sectors:
 
 fdc_read_bytes:
 
-	call fdc_wait_ready_to_send
-
 	ld bc,FDC_STATUS
+
+fdc_rd_wait_ok:
 	in a,(c)
+	jp p,fdc_rd_wait_ok		;; wait until FDC ready (bit 7 = 1)
+					;; P = positive => bit 7 = 0	
+
 	and 0x20			;; check if we are still in execution phase
 	jr z,fdc_rd_end			;; if bit 5 = 0, finished
 
@@ -338,20 +306,12 @@ fdc_load_partial_sector:
 	push hl
 	push de
 	push bc
-
 	push af
-	call fdc_read_id
-	pop af
 
 	;; A = track number
-	push af
 	call fdc_seek_track
-	pop af
 
-	push af
-	call fdc_read_id
 	pop af
-
 	pop bc
 
 	;; set up data struct
@@ -359,8 +319,6 @@ fdc_load_partial_sector:
 	ld (ix+3),a			;; set track nr
 	ld (ix+5),b			;; set start sector
 	ld (ix+7),b			;; end sector is the same
-
-	;; send read cmd
 	ld de,data_cmd_read_delete
 	call fdc_send_command
 	jp nc,fdc_panic
@@ -373,8 +331,6 @@ fdc_load_partial_sector:
 	;; when finished, dump results to buffer
 	;; read sends back ST0, ST1 and ST2
 	call fdc_receive_results
-	jp nc,fdc_panic
-
 	ld a,(fdc_status_data+1)	;; check ST1 register status
 	ret nz				;; if any bit is set, error
 
@@ -389,10 +345,13 @@ fdc_load_partial_sector:
 
 fdc_read_n_bytes:
 
-	call fdc_wait_ready_to_send
-
 	ld bc,FDC_STATUS
+
+fdc_rd_n_wait_ok:
 	in a,(c)
+	jp p,fdc_rd_n_wait_ok		;; wait until bit 7 = 1
+					;; P = positive => bit 7 = 0	
+
 	and 0x20			;; check if we are still in execution phase
 	jr z,fdc_rd_n_end		;; if bit 5 = 0, finished
 
@@ -404,7 +363,7 @@ fdc_read_n_bytes:
 					;; read the required bytes
 
 	ini				;; read byte into (HL) and inc HL
-	dec de				;; dec byte counter
+	dec de				;; decrement byte counter
 	jr fdc_read_n_bytes		;; loop next byte
 
 fdc_rd_n_no_store:
@@ -413,8 +372,6 @@ fdc_rd_n_no_store:
 
 fdc_rd_n_end:
 	ret
-
-;; HASTA AQUI ESTA REVISADO
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; seek to track N
@@ -438,16 +395,16 @@ fdc_seek_track:
 	jp z,fdc_panic
 
 	;; sense interrupt status after seek
-fdc_seek_rec_res_loop:
 	ld de,data_cmd_sense_interrupt_status
 	call fdc_send_command
 	jp nc,fdc_panic
 
+fdc_seek_rec_res_loop:
 	;; this cmd receives results
 	call fdc_receive_results
 	ld a,(fdc_status_data)		;; ST0 register status
-	bit 5,a				;; bit 5 = seek complete ?
-	jr z,fdc_seek_rec_res_loop	;; no => retry
+	cp 0x20				;; bit 5 = seek complete ?
+	jr nz,fdc_seek_rec_res_loop	;; no => retry
 
 	scf
 	ret
