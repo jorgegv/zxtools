@@ -138,6 +138,8 @@ much.
 
 - Plus 3 User Manual: https://worldofspectrum.org/ZXSpectrum128%2B3Manual/
 
+- Plus 3 commented ROM disassembly: https://github.com/ZXSpectrumVault/rom-disassemblies
+
 - Amstrad/+3 Disk format: https://www.seasip.info/Cpm/amsform.html
 
 - Intel 8272 FDC Datasheet: https://datasheetspdf.com/pdf-down/8/2/7/8272_IntelCorporation.pdf
