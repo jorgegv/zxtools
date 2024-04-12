@@ -4,7 +4,18 @@
 
 The motivation behind DSKTOOL is to make creating disc versions of Spectrum
 games as easy as it is to create TAP versions, and _using the same game
-binaries_ as the TAP version.
+binaries_ as the TAP version. The easies way to achieve this is to use the
+disk as a sort of "virtual tape", or VTAPE, in which the game data is stored
+and read sequentially.
+
+VTAPE is just a way to format the disc and data inside it, and a convention
+for accessing that data in an easy way from the game loader.
+
+This tool generates the VTAPE disc image file (in standard DSK format) that
+can be later used to boot the game in +3 emulators, or used as a master for
+physical media generation.
+
+## Design
 
 The main design choice is to _not use regular +3DOS_ formatted discs for
 storage, but to use a custom disc format and layout that makes it trivial to
@@ -15,15 +26,10 @@ This means that the discs generated with this tool will not be readable by
 +3 BASIC nor any other software, but they will just boot the game when you
 select the "LOADER" option in the +3 start menu.
 
-This tool generates the DSK disc image file that can be later used to boot
-it in +3 emulators, or used as a master for physical media generation.
-
-## Design
-
 The generated disc is of the +3 bootable type, and so it has a tiny generic
 bootloader with a special signature that the +3 ROM expects, at track 0
-sector 0 (512 bytes). This generic bootloader is provided with the tool and
-you don0t need to create it.
+sector 0 (512 bytes).  This generic bootloader is provided with DSKTOOL and
+you don't need to create it.
 
 The disc geometry is the standard +3/Amstrad format: single sided, 40
 tracks, 9 sectors per track, 512-byte sectors. In this document, tracks are
@@ -31,18 +37,27 @@ numbered 0-39, and sectors 1-9.
 
 The bootloader is detected and invoked by the ROM when the LOADER option is
 selected, and the bootloader in turn loads the real game specific loader at
-a given position in RAM (0x8000).
+a given position in RAM (0x8000). The game loader is a binary (i.e. machine
+code) program, and NOT a BASIC program. No BASIC is involved when using the
+VTAPE schema.
 
-This loader must use a special provided API for loading the game binaries
-from the disc, with a function that is mostly compatible with the LD-BYTES
-ROM routine for loading from tape, i.e.  it receives the same parameters and
-loads the bytes from media (just from disc instead of tape).  This makes it
-trivial to adapt the existing TAP loader for the disc version.
+The game loader must use a special provided disk API for loading the game
+binaries from the disc, with a function that is fully compatible with the
+LD-BYTES ROM routine for loading from tape, i.e.  it receives the same
+parameters and loads the bytes from media (just from disc instead of tape). 
+Each successful call to the API function leaves the VTAPE pointer ready for
+loading the next data block, exactly the same as a regular tape would.  This
+makes it trivial to adapt an existing TAP loader for the disc version.
 
-The API to load the data blocks from disc is provided as an ASM file that
-must be linked together with the specific loader code.  This API talks
-directly to the FDC (Floppy Drive Controller) and makes no use of ROM calls
-or interrupts. It runs with interrupts disabled.
+The API to load the data blocks from disc is provided as an ASM file
+(diskapi.asm) that must be linked together with the specific loader code. 
+This API talks directly to the FDC (Floppy Drive Controller) and makes no
+use of ROM calls or interrupts.  It runs with interrupts disabled.
+
+The game loader is called in USR0 mode (i.e.  ROM48-5-2-0 bank configuration
+and paging enabled), with SP at 0x8000 and interrupts disabled
+
+The maximum loader size is 4K.
 
 ## Disc Layout
 
@@ -76,6 +91,13 @@ are the game data binaries in the same order that the loader expects them.
 
 All the binaries will be laid out on the disc according to the rules
 indicated in the previous section.
+
+In the previous example, the `loader.asm` file which is compiled to
+`loader.bin` must include the proper instructions to load the SCREEN$ to the
+display file, switch banks and load their data to 0xC000 (`bankX.bin`
+files), and finally set the final memory configuration, load the main code
+(`main.bin`) and jump to the entry point for game execution.  That is,
+everything a regular loader would do.
 
 ## References
 
