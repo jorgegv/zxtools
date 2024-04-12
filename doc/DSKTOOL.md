@@ -123,7 +123,7 @@ application notes for the NEC Floppy Disc Controller) can be found in the
 ## Special acknowledgement
 
 I'd like to thank `Xor_A [Fer]` from the spanish "Ensamblador Z80" Telegram
-channel for his support in disassemblying the Robocop 3 disk loader (on
+channel for his support in disassemblying the Robocop disk loader (on
 which this work is loosely based) and his guidance in my initial steps in
 programming the Floppy Disk Controller in the Speccy.
 
