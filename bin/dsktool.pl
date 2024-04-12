@@ -224,6 +224,9 @@ foreach my $track_bytes ( @data_tracks ) {
 }
 
 # if 40 tracks were not output, output the remaining tracks with filler byte
+printf "  Last used track: %d\n", $current_track - 1;
+printf "  Used:            %d tracks\n", $current_track;
+printf "  Available:       %d tracks\n", 40 - $current_track;
 while ( $current_track < 40 ) {
     print DSK track_info_block_bytes( $current_track, 0 );
     print DSK pack( "C*", ( $dsk->{'filler_byte'} ) x ( $dsk->{'sector_size'} * $dsk->{'num_sectors'} ) );
