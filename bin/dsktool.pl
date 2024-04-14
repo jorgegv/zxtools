@@ -98,7 +98,7 @@ sub pcw_boot_record {
         $dsk->{'sector_size'} / 256,			# 1=256, 2=512, 3=1024...
         1,						# nr reserved tracks
         3,						# 1K blocks
-        0,						# num directory blocks
+        2,						# num directory blocks
         $dsk->{'rw_gap'},
         $dsk->{'fmt_gap'},
         (0) x 5,					# 5 unused bytes

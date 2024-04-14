@@ -386,29 +386,48 @@ fdc_ld_p_end:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_read_n_bytes:
 
-	call fdc_wait_ready_to_send
+;	call fdc_wait_ready_to_send
+	ld bc,FDC_STATUS
+fdc_read_wait_send_status_not_ready:
+	in a,(c)					;; BC = FDC_STATUS
+	bit 7,a						;; bit 7 = 0 : data register not ready
+	jr z,fdc_read_wait_send_status_not_ready
+	bit 6,a						;; bit 6 = 1 : FDD to CPU direction OK
+	jp z,fdc_panic
+
+	ld bc,512
+
+all_byte_loop:
+
+	push bc
 
 	ld bc,FDC_STATUS
 	in a,(c)
-	and 0x20			;; check if we are still in execution phase
-	jr z,fdc_rd_n_end		;; if bit 5 = 0, finished
+	bit 5,a						;; bit 5 = 1 : still in execution phase
+	jr z,fdc_rd_n_end				;; if bit 5 = 0, finished
 
-	ld bc,FDC_CONTROL		;; still in execution phase
+	ld bc,FDC_CONTROL
+	in a,(c)			;; read 1 byte of data
+	ex af,af			;; save it in A'
 
-	ld a,d
-	or e
-	jr z,fdc_rd_n_no_store		;; if DE is 0 we have already
-					;; read the required bytes
+	ld a,d				;; if DE is 0 we have already
+	or e				;; read the required bytes
+	jr z,all_byte_loop_next		;; ignore it and loop next byte
 
-	ini				;; read byte into (HL) and inc HL
+	ex af,af			;; get data byte back
+	ld (hl),a			;; store it
+	inc hl				;; update dst pointer
 	dec de				;; dec byte counter
-	jr fdc_read_n_bytes		;; loop next byte
 
-fdc_rd_n_no_store:
-	in a,(c)			;; read from FDC but don't store
-	jr fdc_read_n_bytes		;; loop next byte
+all_byte_loop_next:
+	pop bc
+	dec bc
+	jr nz,all_byte_loop
+	jr fdc_rd_n_ret
 
 fdc_rd_n_end:
+	pop bc
+fdc_rd_n_ret:
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

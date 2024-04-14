@@ -10,7 +10,7 @@ testloader:
 
 # the sizes of these binaries is special, see testloader.asm!
 testbins:
-	perl -e 'binmode(STDOUT);print pack("C*",( 0xa1 ) x 187 );' >test1.bin
+	perl -e 'binmode(STDOUT);print pack("C*",( 0xa1, 0xa2, 0xa3 ) x 60, ( 0xa4 ) x 7 );' >test1.bin
 	perl -e 'binmode(STDOUT);print pack("C*",( 0xb2 ) x 4795 );' >test2.bin
 	perl -e 'binmode(STDOUT);print pack("C*",( 0xc3 ) x 6843 );' >test3.bin
 
