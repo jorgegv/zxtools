@@ -210,8 +210,11 @@ print DSK pack( "C*", ( $dsk->{'filler_byte'} ) x ( $dsk->{'sector_size'} * 8 - 
 
 # generate the data tracks
 my @data_tracks;
+my %tracks_per_bin;
 foreach my $bin ( @binaries ) {
-    push @data_tracks, split_binary_in_tracks( load_binary( $bin ) );
+    my @tracks = split_binary_in_tracks( load_binary( $bin ) );
+    push @data_tracks, @tracks;
+    $tracks_per_bin{ $bin } = scalar( @tracks );
 }
 
 # output tracks 1 to end of disk - data tracks first
@@ -233,3 +236,9 @@ while ( $current_track < 40 ) {
     $current_track++;
 }
 close DSK;
+
+# report num tracks per binary
+print "  Tracks per binary:\n";
+foreach my $bin ( @binaries ) {
+    printf "    %s: %d track(s)\n", $bin, $tracks_per_bin{ $bin };
+}
