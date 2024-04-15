@@ -76,7 +76,7 @@ set_mode_usr0:
 	ld bc,0x7ffd
 	ld a,0x10			;; b0-b2: page 0 at $C000; b3: screen at page 5; b4: 48K rom
 	out (c),a
-	ld a, 0x0c			;; 0000 1100 (motor ON BH rom ON -ROM 48k-)
+	ld a, 0x0c			;; 0000 1100 (b3 =1: motor ON; b2 = 1: 48K rom)
 	ld b, 0x1f			;; will out to 0x1ffd
 	out (c), a
 	ld sp,0x8000			;; put stack just below loader
