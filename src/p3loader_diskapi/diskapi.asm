@@ -4,8 +4,11 @@
 ;;                                                        ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-defc FDC_CONTROL	= $3ffd
-defc FDC_STATUS		= $2ffd
+defc FDC_CONTROL	= 0x3ffd
+defc FDC_CONTROL_H	= 0x3f
+defc FDC_STATUS		= 0x2ffd
+defc FDC_STATUS_H	= 0x2f
+
 defc FDC_TRACK_SIZE	= 4608	;; 512 * 9
 ;; sector size is assumed = 512
 
@@ -227,6 +230,7 @@ fdc_rec_res_loop:
 	ld bc,FDC_STATUS		;; check status again
 	in a,(c)
 	and 0x10			;; bit 4 = 1: command in progress
+					;; CHECK: +3DOS comprueba si bit 6 = 0 (?)
 	jr nz,fdc_rec_res_loop		;; more bytes available
 
 	scf				;; success
@@ -386,47 +390,32 @@ fdc_ld_p_end:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_read_n_bytes:
 
-;	call fdc_wait_ready_to_send
+	push hl
+	ld hl,fdc_read_sector_buffer
+
+	;; load sector in temporary buffer, transfer later
+	;; wait for FDC ready to send
 	ld bc,FDC_STATUS
+
 fdc_read_wait_send_status_not_ready:
 	in a,(c)					;; BC = FDC_STATUS
-	bit 7,a						;; bit 7 = 0 : data register not ready
-	jr z,fdc_read_wait_send_status_not_ready
-	bit 6,a						;; bit 6 = 1 : FDD to CPU direction OK
-	jp z,fdc_panic
+	jp p,fdc_read_wait_send_status_not_ready	;; bit 7 = 0 : data register not ready
+	and 0x20					;; check for execution phase
+	jp z,fdc_rd_n_xfer				;; if Z, finished
 
-	ld bc,512
+	;; load data byte in buffer
+	ld b,FDC_CONTROL_H
+	ini
+	ld b,FDC_STATUS_H
+	jr fdc_read_wait_send_status_not_ready
 
-all_byte_loop:
+	;; data is in buffer, transfer to definitive location
+fdc_rd_n_xfer:
+	ld bc,de					;; BC = bytes to transfer
+	pop de						;; DE = destination address
+	ld hl,fdc_read_sector_buffer			;; HL = sector buffer
+	ldir
 
-	push bc
-
-	ld bc,FDC_STATUS
-	in a,(c)
-	bit 5,a						;; bit 5 = 1 : still in execution phase
-	jr z,fdc_rd_n_end				;; if bit 5 = 0, finished
-
-	ld bc,FDC_CONTROL
-	in a,(c)			;; read 1 byte of data
-	ex af,af			;; save it in A'
-
-	ld a,d				;; if DE is 0 we have already
-	or e				;; read the required bytes
-	jr z,all_byte_loop_next		;; ignore it and loop next byte
-
-	ex af,af			;; get data byte back
-	ld (hl),a			;; store it
-	inc hl				;; update dst pointer
-	dec de				;; dec byte counter
-
-all_byte_loop_next:
-	pop bc
-	dec bc
-	jr nz,all_byte_loop
-	jr fdc_rd_n_ret
-
-fdc_rd_n_end:
-	pop bc
 fdc_rd_n_ret:
 	ret
 
@@ -520,3 +509,6 @@ fdc_status_data:
 fdc_current_track:
 	db 0x01		;; first data track is #1 (the second one)
 			;; track #0 is reserved for bootloader and loader
+
+fdc_read_sector_buffer:
+	ds 512		;; read buffer
