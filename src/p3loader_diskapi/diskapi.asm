@@ -270,57 +270,34 @@ fdc_read_id:
 fdc_load_sectors:
 
 	push ix
-	push hl
+
+	ld de,512			;; num bytes
+
+fdc_ld_repeat_sector:
 	push af
-	push bc
-
-	call fdc_read_id
-
-	;; A = track number
-	call fdc_seek_track
-
-	call fdc_read_id
-
-	;; B,C = start,end sectors
-	pop bc
-
 	ld a,c
-	sub b				;; A = last sector - first sector
-	inc a				;; A = num sectors to load
-	add a,a
-	ld d,a
-	ld e,0				;; DE = A * 512 = bytes to load
+	cp b
+	jr c,fdc_ld_loop_end		;; if B > C, end
+	pop af
 
-	pop af				;; restore A = track
-
-	push de				;; save num bytes
-
-	;; set up data struct
-	ld ix,data_cmd_read_delete
-	ld (ix+3),a			;; set track nr
-	ld (ix+5),b			;; set start sector
-	ld (ix+7),c			;; set end sector
-
-	;; send read cmd
-	ld de,data_cmd_read_delete	;; command address
-	call fdc_send_command
-	jp nc,fdc_panic
-
-	;; start reading bytes into HL
-	pop de				;; recover number of bytes
+	push af
+	push de
+	push hl
+	push bc
+	call fdc_load_partial_sector
+	pop bc
 	pop hl
-	call fdc_read_n_bytes
+	pop de
+	pop af
 
-	;; check results
-	call fdc_receive_results	;; read returns ST0, ST1 and ST2
-	jp nc,fdc_panic
+	add hl,de			;; update destination for next block
 
-	ld a,(fdc_status_data+1)	;; check ST1 register status
-	jr nz,fdc_ld_end		;; if any bit is set, error
+	inc b
+	jr fdc_ld_repeat_sector
 
+fdc_ld_loop_end:
 	scf				;; success
-
-fdc_ld_end:
+	pop af
 	pop ix
 	ret
 
