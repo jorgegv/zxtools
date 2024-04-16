@@ -30,8 +30,6 @@ public fdc_load_bytes
 ;; Returns: C flag set if success, reset if error
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_load_bytes:
-	ex de,hl			;; HL = bytes to load
-	push hl				;; save remaining bytes
 
 	;; IX maintains the current destination address during all the
 	;; routine. The subroutines that are called by this one all
@@ -42,90 +40,54 @@ fdc_load_bytes:
 	;; IY and the alternate register bank are not used
 
 fdc_ld_bytes_loop_full_track:
-	;; HL here = remaining bytes
-	;; if remaining bytes < track size, skip to partial track load
-	ld de,FDC_TRACK_SIZE
-	or a				;; reset carry
-	sbc hl,de
-	jr c,fdc_ld_bytes_partial_track
+	;; DE = remaining bytes
+	ld hl,FDC_TRACK_SIZE
+	sbc hl,de			;; if track_size > remaining bytes, skip to partial track load
+	jr nc,fdc_ld_bytes_partial_track
+
+	push de				;; save remaining bytes
 
 	;; load full track and restart
-	pop de				;; discard old value
-	push hl				;; save new remaining bytes
 	ld a,(fdc_current_track)	;; track
 	ld b,1				;; start sector
 	ld c,9				;; end sector
 	push ix
 	pop hl				;; HL = current dest address
+	ld de,FDC_TRACK_SIZE		;; bytes to load
 
 	call fdc_load_sectors
 
 	ld bc,FDC_TRACK_SIZE
 	add ix,bc			;; update dest address
+	pop hl				;; recover remaining bytes
+	sbc hl,bc
+	ld de,hl			;; DE = updated remaining bytes
 
 	ld hl,fdc_current_track		;; inc current track
 	inc (hl)
 
-	pop hl				;; HL = remaining bytes
-	push hl
 	jr fdc_ld_bytes_loop_full_track	;; repeat until remaining bytes < full track
 
 	;; load partial track
 fdc_ld_bytes_partial_track:
-	pop de				;; DE = remaining bytes
+	;; DE = remaining bytes
 	push de				;; save for later calculation
 
-	;; DE here = remaining bytes
-	;; if remaining bytes < sector size, skip to partial last sector load
-	ld hl,512
-	or a
-	sbc hl,de
-	jr nc,fdc_ld_bytes_last_sector
-
-	ld a,d				;; DE = remaining bytes / 512
-	and 0xfe			;; discard 9 low bits of DE
-	ld d,a
-	ld e,0
-
-	push de				;; save bytes to load for later
+	ld a,d
+	or e
+	jr z,fdc_ld_bytes_inc_track	;; end if remaining bytes = 0
 
 	ld a,(fdc_current_track)	;; track
 	ld b,1				;; start sector
 	ld c,d
-	srl c				;; C = end sector (remaining bytes/512)
-
+	srl c
+	inc c				;; C = end sector (remaining bytes/512 + 1)
 	push ix
 	pop hl				;; HL = dest address
-
 	call fdc_load_sectors
 
 	pop de				;; DE = bytes loaded (saved above)
 	add ix,de			;; update dest address
-
-	pop hl				;; HL = previous remaining bytes
-	push hl				;; expected by next section
-
-	sbc hl,de			;; HL = current remaining bytes
-
-	ld de,hl			;; DE = current remaining bytes
-
-fdc_ld_bytes_last_sector:
-	;; DE here contains the last remaining bytes in all cases
-	ld a,d
-	or e
-	jr z,fdc_ld_bytes_inc_track	;; if remaining bytes == 0, skip to end
-
-	pop hl				;; HL = previous remaining bytes
-	ld b,h
-	srl b
-	inc b				;; B = last full sector + 1
-
-	ld a,(fdc_current_track)	;; A = track
-
-	push ix
-	pop hl				;; HL = dest address
-
-	call fdc_load_partial_sector
 
 fdc_ld_bytes_inc_track:
 	ld hl,fdc_current_track		;; inc current track
@@ -135,11 +97,162 @@ fdc_ld_bytes_inc_track:
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; read N bytes in track A from sectors B to C, store to
+;; HL - only stores up to N bytes, without overwriting after that
+;;
+;; INPUTS:
+;; A = track number
+;; B = start sector ID
+;; C = end sector ID
+;; DE = number of bytes to read
+;; HL = destination address
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+fdc_load_sectors:
+
+	push ix
+
+	push hl
+	push de
+	push bc
+
+	call fdc_read_id
+
+	;; A = track number
+	call fdc_seek_track
+
+	call fdc_read_id
+
+	pop bc
+
+	;; set up data struct
+	ld ix,data_cmd_read_delete
+	ld (ix+3),a			;; set track nr
+	ld (ix+5),b			;; set start sector
+	ld (ix+7),c			;; set end sector
+
+	;; send read cmd
+	ld de,data_cmd_read_delete
+	call fdc_send_command
+	jp nc,fdc_panic
+
+	;; start reading bytes
+	pop de
+	pop hl
+	call fdc_read_n_bytes
+
+	;; when finished, dump results to buffer
+	;; read sends back ST0, ST1 and ST2
+	call fdc_receive_results
+	jp nc,fdc_panic
+
+	ld a,(fdc_status_data+1)	;; check ST1 register status
+	jr nz,fdc_ld_p_end		;; if any bit is set, error
+
+	scf				;; success
+
+fdc_ld_p_end:
+	pop ix
+	ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; read N sector bytes - bytes after N are read but discarded
+;;
+;; Internally, this function may overwrite up to 511 bytes after the
+;; expected memory area where the data will be loaded.  But it saves this
+;; area if needed in a 512 byte buffer before starting the transfer, and
+;; restores it at the end.  The net result is that no memory is corrupted
+;; after the exact last byte loaded.
+;;
+;; This hack is done to avoid having to read sectors one by one in the
+;; buffer, which makes loading much slower.  Data load times using this
+;; method vs.  reading sector by sector have been reduced by 75% (!!) in
+;; real game loads.
+;;
+;; INPUTS:
+;; DE = number of bytes to read from FDC
+;; HL = destination address
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+fdc_read_n_bytes:
+
+	push hl
+	push de
+
+	;; save 512 bytes after dest buffer, which may be overwritten
+	;; but only if it's not a multiple of 512
+	call check_de_multiple_512
+	jr c, fdc_read_skip_save_buf
+
+	;; save bytes block
+	exx
+	pop de
+	pop hl
+	push hl
+	push de
+	add hl,de	;; source addr
+	ld de,fdc_read_sector_buffer
+	ld bc,512
+	ldir
+	exx
+
+fdc_read_skip_save_buf:
+	pop de
+	pop hl
+	push hl
+	push de
+
+	;; load sector in temporary buffer, transfer later
+	;; wait for FDC ready to send
+	ld bc,FDC_STATUS
+
+	;; The following loop may overwrite up to 511 bytes just after the
+	;; destination area but we have saved them before
+
+	; This loop must run FAST AS HELL to avoid losing bytes!
+fdc_read_wait_send_status_not_ready:
+	in a,(c)					;; BC = FDC_STATUS
+	jp p,fdc_read_wait_send_status_not_ready	;; bit 7 = 0 : data register not ready
+	and 0x20					;; check for execution phase
+	jp z,fdc_read_restore_last_block		;; if Z, finished
+
+	;; load data byte
+	ld b,FDC_CONTROL_H
+	ini						;; read and store data byte
+	ld b,FDC_STATUS_H
+	jr fdc_read_wait_send_status_not_ready
+	; end of FAST-AS-HELL loop :-)
+
+	;; restore 512 bytes after dest buffer, which may have been
+	;; overwritten but again, only if it's not a multiple of 512
+fdc_read_restore_last_block:
+	pop de
+	push de
+	call check_de_multiple_512
+	jr c, fdc_read_skip_restore_buf
+
+	;; restore bytes block
+	exx
+	pop de
+	pop hl
+	push hl
+	push de
+	add hl,de
+	ex de,hl	;; dst addr
+	ld hl,fdc_read_sector_buffer
+	ld bc,512
+	ldir
+	exx
+
+fdc_read_skip_restore_buf:
+	pop de
+	pop hl
+	ret
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; small delay
 ;; no inputs
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_small_delay:
-	ld a,$05
+	ld a,0x05
 fdc_small_delay_loop:
         dec a
 	nop
@@ -157,7 +270,6 @@ fdc_wait_rec_status_not_ready:
 	in a,(c)					;; read status
 	add a,a         				;; bit 7->C, bit 6->7
 	jr nc,fdc_wait_rec_status_not_ready		;; bit 7 off: data register not ready
-	;; check data direction is OK, panic if not
 	add a,a						;; bit 7->C (old bit 6)
 	jp c,fdc_panic					;; old bit 6 off: CPU to FDD direction OK
 	pop af
@@ -258,142 +370,29 @@ fdc_read_id:
 	pop af
 	ret
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; load full sectors from track A to address HL
-;;
-;; INPUTS:
-;; A = track number
-;; B = initial sector ID
-;; C = final sector ID
-;; HL = destination address
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-fdc_load_sectors:
-
-	push ix
-
-	ld de,512			;; num bytes
-
-fdc_ld_repeat_sector:
-	push af
-	ld a,c
-	cp b
-	jr c,fdc_ld_loop_end		;; if B > C, end
-	pop af
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; checks if DE is a multiple of 512
+;; Carry set if it is
+;; preserves everything
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+check_de_multiple_512:
+	;; a multiple of 512 has all bits 0-8 = 0
 	push af
 	push de
-	push hl
-	push bc
-	call fdc_load_partial_sector
-	pop bc
-	pop hl
+	ld a,e
+	or a
+	jr nz,check_de_multiple_512_end		;; if any bit 0-7 is set, not multiple
+	rrc d
+	jr c,check_de_multiple_512_end		;; if bit 8 is set, not multiple
 	pop de
 	pop af
-
-	add hl,de			;; update destination for next block
-
-	inc b
-	jr fdc_ld_repeat_sector
-
-fdc_ld_loop_end:
-	scf				;; success
-	pop af
-	pop ix
+	scf					;; set C = 1: it is a multiple
 	ret
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; read N bytes from a given sector in track A  to HL - only
-;; stores up to N bytes, without overwriting after that
-;;
-;; INPUTS:
-;; A = track number
-;; B = sector ID
-;; DE = number of bytes to read
-;; HL = destination address
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-fdc_load_partial_sector:
-
-	push ix
-
-	push hl
-	push de
-	push bc
-
-	call fdc_read_id
-
-	;; A = track number
-	call fdc_seek_track
-
-	call fdc_read_id
-
-	pop bc
-
-	;; set up data struct
-	ld ix,data_cmd_read_delete
-	ld (ix+3),a			;; set track nr
-	ld (ix+5),b			;; set start sector
-	ld (ix+7),b			;; end sector is the same
-
-	;; send read cmd
-	ld de,data_cmd_read_delete
-	call fdc_send_command
-	jp nc,fdc_panic
-
-	;; start reading bytes
+check_de_multiple_512_end:
 	pop de
-	pop hl
-	call fdc_read_n_bytes
-
-	;; when finished, dump results to buffer
-	;; read sends back ST0, ST1 and ST2
-	call fdc_receive_results
-	jp nc,fdc_panic
-
-	ld a,(fdc_status_data+1)	;; check ST1 register status
-	jr nz,fdc_ld_p_end		;; if any bit is set, error
-
-	scf				;; success
-
-fdc_ld_p_end:
-	pop ix
-	ret
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; read N sector bytes - bytes after N are read but discarded
-;;
-;; INPUTS:
-;; DE = number of bytes to read from FDC
-;; HL = destination address
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-fdc_read_n_bytes:
-
-	push hl
-	ld hl,fdc_read_sector_buffer
-
-	;; load sector in temporary buffer, transfer later
-	;; wait for FDC ready to send
-	ld bc,FDC_STATUS
-
-fdc_read_wait_send_status_not_ready:
-	in a,(c)					;; BC = FDC_STATUS
-	jp p,fdc_read_wait_send_status_not_ready	;; bit 7 = 0 : data register not ready
-	and 0x20					;; check for execution phase
-	jp z,fdc_rd_n_xfer				;; if Z, finished
-
-	;; load data byte in buffer
-	ld b,FDC_CONTROL_H
-	ini
-	ld b,FDC_STATUS_H
-	jr fdc_read_wait_send_status_not_ready
-
-	;; data is in buffer, transfer to definitive location
-fdc_rd_n_xfer:
-	ld bc,de					;; BC = bytes to transfer
-	pop de						;; DE = destination address
-	ld hl,fdc_read_sector_buffer			;; HL = sector buffer
-	ldir
-
-fdc_rd_n_ret:
+	pop af
+	or a					;; set C = 0: it is not a multiple
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
