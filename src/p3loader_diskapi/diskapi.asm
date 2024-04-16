@@ -60,7 +60,7 @@ fdc_ld_bytes_loop_full_track:
 	add ix,bc			;; update dest address
 	pop hl				;; recover remaining bytes
 	sbc hl,bc
-	ld de,hl			;; update remaining bytes
+	ld de,hl			;; DE = updated remaining bytes
 
 	ld hl,fdc_current_track		;; inc current track
 	inc (hl)
@@ -69,7 +69,7 @@ fdc_ld_bytes_loop_full_track:
 
 	;; load partial track
 fdc_ld_bytes_partial_track:
-	;;DE = remaining bytes
+	;; DE = remaining bytes
 	push de				;; save for later calculation
 
 	ld a,d
@@ -99,7 +99,7 @@ fdc_ld_bytes_inc_track:
 ;; no inputs
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_small_delay:
-	ld a,$05
+	ld a,0x05
 fdc_small_delay_loop:
         dec a
 	nop
@@ -117,7 +117,6 @@ fdc_wait_rec_status_not_ready:
 	in a,(c)					;; read status
 	add a,a         				;; bit 7->C, bit 6->7
 	jr nc,fdc_wait_rec_status_not_ready		;; bit 7 off: data register not ready
-	;; check data direction is OK, panic if not
 	add a,a						;; bit 7->C (old bit 6)
 	jp c,fdc_panic					;; old bit 6 off: CPU to FDD direction OK
 	pop af
@@ -234,13 +233,13 @@ check_de_multiple_512:
 	jr c,check_de_multiple_512_end		;; if bit 8 is set, not multiple
 	pop de
 	pop af
-	scf
+	scf					;; set C = 1: it is a multiple
 	ret
 
 check_de_multiple_512_end:
 	pop de
 	pop af
-	or a
+	or a					;; set C = 0: it is not a multiple
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -318,6 +317,7 @@ fdc_read_n_bytes:
 	call check_de_multiple_512
 	jr c, fdc_read_skip_save_buf
 
+	;; save bytes block
 	exx
 	pop de
 	pop hl
@@ -339,8 +339,10 @@ fdc_read_skip_save_buf:
 	;; wait for FDC ready to send
 	ld bc,FDC_STATUS
 
-; The following may overwrite 512 bytes just after the destination area
-; but we have saved them before
+	;; The following loop may overwrite up to 511 bytes just after the
+	;; destination area but we have saved them before
+
+	; This loop must run FAST AS HELL to avoid losing bytes!
 fdc_read_wait_send_status_not_ready:
 	in a,(c)					;; BC = FDC_STATUS
 	jp p,fdc_read_wait_send_status_not_ready	;; bit 7 = 0 : data register not ready
@@ -352,14 +354,17 @@ fdc_read_wait_send_status_not_ready:
 	ini						;; read and store data byte
 	ld b,FDC_STATUS_H
 	jr fdc_read_wait_send_status_not_ready
+	; end of FAST-AS-HELL loop :-)
 
+	;; restore 512 bytes after dest buffer, which may have been
+	;; overwritten but again, only if it's not a multiple of 512
 fdc_read_restore_last_block:
 	pop de
 	push de
 	call check_de_multiple_512
 	jr c, fdc_read_skip_restore_buf
 
-
+	;; restore bytes block
 	exx
 	pop de
 	pop hl
