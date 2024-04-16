@@ -30,8 +30,6 @@ public fdc_load_bytes
 ;; Returns: C flag set if success, reset if error
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 fdc_load_bytes:
-	ex de,hl			;; HL = bytes to load
-	push hl				;; save remaining bytes
 
 	;; IX maintains the current destination address during all the
 	;; routine. The subroutines that are called by this one all
@@ -42,90 +40,52 @@ fdc_load_bytes:
 	;; IY and the alternate register bank are not used
 
 fdc_ld_bytes_loop_full_track:
-	;; HL here = remaining bytes
-	;; if remaining bytes < track size, skip to partial track load
-	ld de,FDC_TRACK_SIZE
-	or a				;; reset carry
-	sbc hl,de
-	jr c,fdc_ld_bytes_partial_track
+	;; DE = remaining bytes
+	ld hl,FDC_TRACK_SIZE
+	sbc hl,de			;; if track_size > remaining bytes, skip to partial track load
+	jr nc,fdc_ld_bytes_partial_track
+
+	push de				;; save remaining bytes
 
 	;; load full track and restart
-	pop de				;; discard old value
-	push hl				;; save new remaining bytes
 	ld a,(fdc_current_track)	;; track
 	ld b,1				;; start sector
 	ld c,9				;; end sector
-	push ix
-	pop hl				;; HL = current dest address
+	ld hl,ix			;; current dest address
+	ld de,FDC_TRACK_SIZE		;; bytes to load
 
 	call fdc_load_sectors
 
 	ld bc,FDC_TRACK_SIZE
 	add ix,bc			;; update dest address
+	pop hl				;; recover remaining bytes
+	sbc hl,bc
+	ld de,hl			;; update remaining bytes
 
 	ld hl,fdc_current_track		;; inc current track
 	inc (hl)
 
-	pop hl				;; HL = remaining bytes
-	push hl
 	jr fdc_ld_bytes_loop_full_track	;; repeat until remaining bytes < full track
 
 	;; load partial track
 fdc_ld_bytes_partial_track:
-	pop de				;; DE = remaining bytes
+	;;DE = remaining bytes
 	push de				;; save for later calculation
 
-	;; DE here = remaining bytes
-	;; if remaining bytes < sector size, skip to partial last sector load
-	ld hl,512
-	or a
-	sbc hl,de
-	jr nc,fdc_ld_bytes_last_sector
-
-	ld a,d				;; DE = remaining bytes / 512
-	and 0xfe			;; discard 9 low bits of DE
-	ld d,a
-	ld e,0
-
-	push de				;; save bytes to load for later
+	ld a,d
+	or e
+	jr z,fdc_ld_bytes_inc_track	;; end if remaining bytes = 0
 
 	ld a,(fdc_current_track)	;; track
 	ld b,1				;; start sector
 	ld c,d
-	srl c				;; C = end sector (remaining bytes/512)
-
-	push ix
-	pop hl				;; HL = dest address
-
+	srl c
+	inc c				;; C = end sector (remaining bytes/512 + 1)
+	ld hl,ix			;; HL = dest address
 	call fdc_load_sectors
 
 	pop de				;; DE = bytes loaded (saved above)
 	add ix,de			;; update dest address
-
-	pop hl				;; HL = previous remaining bytes
-	push hl				;; expected by next section
-
-	sbc hl,de			;; HL = current remaining bytes
-
-	ld de,hl			;; DE = current remaining bytes
-
-fdc_ld_bytes_last_sector:
-	;; DE here contains the last remaining bytes in all cases
-	ld a,d
-	or e
-	jr z,fdc_ld_bytes_inc_track	;; if remaining bytes == 0, skip to end
-
-	pop hl				;; HL = previous remaining bytes
-	ld b,h
-	srl b
-	inc b				;; B = last full sector + 1
-
-	ld a,(fdc_current_track)	;; A = track
-
-	push ix
-	pop hl				;; HL = dest address
-
-	call fdc_load_partial_sector
 
 fdc_ld_bytes_inc_track:
 	ld hl,fdc_current_track		;; inc current track
@@ -258,49 +218,6 @@ fdc_read_id:
 	pop af
 	ret
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; load full sectors from track A to address HL
-;;
-;; INPUTS:
-;; A = track number
-;; B = initial sector ID
-;; C = final sector ID
-;; HL = destination address
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-fdc_load_sectors:
-
-	push ix
-
-	ld de,512			;; num bytes
-
-fdc_ld_repeat_sector:
-	push af
-	ld a,c
-	cp b
-	jr c,fdc_ld_loop_end		;; if B > C, end
-	pop af
-
-	push af
-	push de
-	push hl
-	push bc
-	call fdc_load_partial_sector
-	pop bc
-	pop hl
-	pop de
-	pop af
-
-	add hl,de			;; update destination for next block
-
-	inc b
-	jr fdc_ld_repeat_sector
-
-fdc_ld_loop_end:
-	scf				;; success
-	pop af
-	pop ix
-	ret
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; checks if DE is a multiple of 512
 ;; Carry set if it is
@@ -327,16 +244,17 @@ check_de_multiple_512_end:
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; read N bytes from a given sector in track A  to HL - only
-;; stores up to N bytes, without overwriting after that
+;; read N bytes in track A from sectors B to C, store to
+;; HL - only stores up to N bytes, without overwriting after that
 ;;
 ;; INPUTS:
 ;; A = track number
-;; B = sector ID
+;; B = start sector ID
+;; C = end sector ID
 ;; DE = number of bytes to read
 ;; HL = destination address
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-fdc_load_partial_sector:
+fdc_load_sectors:
 
 	push ix
 
@@ -357,7 +275,7 @@ fdc_load_partial_sector:
 	ld ix,data_cmd_read_delete
 	ld (ix+3),a			;; set track nr
 	ld (ix+5),b			;; set start sector
-	ld (ix+7),b			;; end sector is the same
+	ld (ix+7),c			;; set end sector
 
 	;; send read cmd
 	ld de,data_cmd_read_delete
