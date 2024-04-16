@@ -301,6 +301,31 @@ fdc_ld_loop_end:
 	pop ix
 	ret
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; checks if DE is a multiple of 512
+;; Carry set if it is
+;; preserves everything
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+check_de_multiple_512:
+	;; a multiple of 512 has all bits 0-8 = 0
+	push af
+	push de
+	ld a,e
+	or a
+	jr nz,check_de_multiple_512_end		;; if any bit 0-7 is set, not multiple
+	rrc d
+	jr c,check_de_multiple_512_end		;; if bit 8 is set, not multiple
+	pop de
+	pop af
+	scf
+	ret
+
+check_de_multiple_512_end:
+	pop de
+	pop af
+	or a
+	ret
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; read N bytes from a given sector in track A  to HL - only
 ;; stores up to N bytes, without overwriting after that
@@ -368,32 +393,70 @@ fdc_ld_p_end:
 fdc_read_n_bytes:
 
 	push hl
-	ld hl,fdc_read_sector_buffer
+	push de
+
+	;; save 512 bytes after dest buffer, which may be overwritten
+	;; but only if it's not a multiple of 512
+	call check_de_multiple_512
+	jr c, fdc_read_skip_save_buf
+
+	exx
+	pop de
+	pop hl
+	push hl
+	push de
+	add hl,de	;; source addr
+	ld de,fdc_read_sector_buffer
+	ld bc,512
+	ldir
+	exx
+
+fdc_read_skip_save_buf:
+	pop de
+	pop hl
+	push hl
+	push de
 
 	;; load sector in temporary buffer, transfer later
 	;; wait for FDC ready to send
 	ld bc,FDC_STATUS
 
+; The following may overwrite 512 bytes just after the destination area
+; but we have saved them before
 fdc_read_wait_send_status_not_ready:
 	in a,(c)					;; BC = FDC_STATUS
 	jp p,fdc_read_wait_send_status_not_ready	;; bit 7 = 0 : data register not ready
 	and 0x20					;; check for execution phase
-	jp z,fdc_rd_n_xfer				;; if Z, finished
+	jp z,fdc_read_restore_last_block		;; if Z, finished
 
-	;; load data byte in buffer
+	;; load data byte
 	ld b,FDC_CONTROL_H
-	ini
+	ini						;; read and store data byte
 	ld b,FDC_STATUS_H
 	jr fdc_read_wait_send_status_not_ready
 
-	;; data is in buffer, transfer to definitive location
-fdc_rd_n_xfer:
-	ld bc,de					;; BC = bytes to transfer
-	pop de						;; DE = destination address
-	ld hl,fdc_read_sector_buffer			;; HL = sector buffer
-	ldir
+fdc_read_restore_last_block:
+	pop de
+	push de
+	call check_de_multiple_512
+	jr c, fdc_read_skip_restore_buf
 
-fdc_rd_n_ret:
+
+	exx
+	pop de
+	pop hl
+	push hl
+	push de
+	add hl,de
+	ex de,hl	;; dst addr
+	ld hl,fdc_read_sector_buffer
+	ld bc,512
+	ldir
+	exx
+
+fdc_read_skip_restore_buf:
+	pop de
+	pop hl
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
