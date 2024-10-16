@@ -202,6 +202,10 @@ sub byte2graph {
 ############################
 
 my %tile_output_format = (
+    preamble => {
+        'c'	=> '',
+        'asm'	=> "\tsection data_compiler\n\n",
+    },
     comment1 => {
         'c'	=> "// tile '%s' definition\n// pixel data\n",
         'asm'	=> ";; tile '%s' definition\n;; pixel data\n",
@@ -267,6 +271,9 @@ my %tile_output_format = (
 sub output_tiles {
     my $gfx = shift;
     my $ct = $opt_code_type;
+
+    # preamble
+    print $tile_output_format{'preamble'}{ $ct };
 
     # pixels: header
     printf $tile_output_format{'comment1'}{ $ct }, $opt_symbol_name;
@@ -364,6 +371,10 @@ sub output_tiles {
 #############################
 
 my %sprite_output_format = (
+    preamble => {
+        'c'	=> '',
+        'asm'	=> "\tsection data_compiler\n\n",
+    },
     comment1 => {
         'c'	=> "// sprite '%s' definition\n// pixel data\n// %s\n// %s\n",
         'asm'	=> ";; sprite '%s' definition\n;; pixel data\n;; %s\n;; %s\n",
@@ -410,6 +421,9 @@ sub mix_mask_and_pixel {
 sub output_sprite {
     my $gfx = shift;
     my $ct = $opt_code_type;
+
+    # preamble
+    print $sprite_output_format{'preamble'}{ $ct };
 
     # pixels: header
     printf( $sprite_output_format{'comment1'}{ $ct },
