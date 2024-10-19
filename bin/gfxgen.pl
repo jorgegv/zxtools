@@ -450,7 +450,7 @@ sub output_sprite {
             foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
                 print join("\n", map {
                     sprintf $sprite_output_format{'output1'}{ $ct },
-                        $_->[0], $_>[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
+                        $_->[0], $_->[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
                 } mix_mask_and_pixel( $gfx->{'cells'}[ $row ][ $col ]{'masks'}, $gfx->{'cells'}[ $row ][ $col ]{'bytes'} ) );
                 print "\n";
             }
