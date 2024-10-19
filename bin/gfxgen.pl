@@ -105,6 +105,7 @@ sub process_cli_options {
     if ( defined( $opt_mask ) ) {
         ( $opt_mask =~ m/^[0-9a-f]{6}$/i ) or
             die "--mask must have format RRGGBB\n";
+        $opt_mask = uc( $opt_mask );
     } else {
         $opt_mask = 'FF0000';
     }
@@ -112,6 +113,7 @@ sub process_cli_options {
     if ( defined( $opt_background ) ) {
         ( $opt_background =~ m/^[0-9a-f]{6}$/i ) or
             die "--background must have format RRGGBB\n";
+        $opt_background = uc( $opt_background );
     } else {
         $opt_background = '000000';
     }
@@ -119,6 +121,7 @@ sub process_cli_options {
     if ( defined( $opt_foreground ) ) {
       ( $opt_foreground =~ m/^[0-9a-f]{6}$/i ) or
         die "--foreground must have format RRGGBB\n";
+        $opt_foreground = uc( $opt_foreground );
     } else {
         $opt_foreground = 'FFFFFF';
     }
@@ -381,7 +384,7 @@ my %sprite_output_format = (
     },
     header1 => {
         'c'	=> "uint8_t %s_pixels[ %d ] = {\n",
-        'asm'	=> "PUBLIC %s_pixels\n",
+        'asm'	=> "PUBLIC %s_pixels\t;; %d bytes \n",
     },
     header2 => {
         'c'	=> "",
