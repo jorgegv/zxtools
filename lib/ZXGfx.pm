@@ -141,7 +141,7 @@ sub zxgfx_convert_to_zx_colors {
 # If width,height are not provided, they are set to the PNG dimensions minus xpos,ypos
 
 sub zxgfx_extract_from_png {
-    my ( $png_file, $xpos, $ypos, $width, $height ) = @_;
+    my ( $png_file, $xpos, $ypos, $width, $height, $hmirror, $vmirror ) = @_;
 
     my $png = GD::Image->newFromPng( $png_file );
     defined( $png ) or
@@ -158,12 +158,20 @@ sub zxgfx_extract_from_png {
         die "The specified image is outside the bounds of the source image\n";
 
     # extract pixels from PNG - generates $graphic->{'pixels'}
-    # bidimencional array of pixel colors in 'RRGGBB' format, row-major form
+    # bidimensional array of pixel colors in 'RRGGBB' format, row-major form
     my $gfx;
     foreach my $row ( 0 .. ($height - 1) ) {
       foreach my $col ( 0 .. ($width - 1) ) {
           $gfx->{'pixels'}[ $row ][ $col ] = sprintf( '%02x%02x%02x', $png->rgb( $png->getPixel( $xpos + $col, $ypos + $row ) ) );
       }
+      # if horizontal mirror was requested, reverse the pixel line
+      if ( $hmirror || 0 ) {
+          $gfx->{'pixels'}[ $row ] = [ reverse( @{ $gfx->{'pixels'}[ $row ] } ) ];
+      }
+    }
+    # if vertical mirror was requested, reverse the line list
+    if ( $vmirror || 0 ) {
+        $gfx->{'pixels'} = [ reverse( @{ $gfx->{'pixels'} } ) ];
     }
 
     # convert pixels to spectrum colors - modifies $gfx->{'pixels'}

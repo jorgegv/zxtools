@@ -38,8 +38,8 @@ Options:
     -y, --ypos <y_position>
         --row <row_position> (exclusive with --ypos)
         --col <column_position> (exclusive with --xpos)
-    -w, --width <width>
-    -h, --height <height>
+        --width <width>
+        --height <height>
     -m, --mask <mask_color> - default: FF0000 (red)
     -f, --foreground <foreground_color> - default: FFFFFF (white)
     -b, --background <background_color> - default: 000000 (black)
@@ -50,7 +50,8 @@ Options:
     -p, --preshift <1|2|4>
         --extra-right-col - generate sprite extra empty right column (default: no)
         --extra-bottom-row - generate sprite extra empty bottom row, SP1 style (default: no)
-
+        --hmirror - mirror graphic data horizontally
+        --vmirror - mirror graphic data vertically
 EOF_USAGE
 ;
     exit 1;
@@ -65,7 +66,7 @@ EOF_USAGE
 my ($opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height, $opt_mask,
     $opt_foreground, $opt_background, $opt_code_type, $opt_symbol_name,
     $opt_layout, $opt_gfx_type, $opt_preshift, $opt_extra_right_col,
-    $opt_extra_bottom_row, $opt_row, $opt_col );
+    $opt_extra_bottom_row, $opt_row, $opt_col, $opt_hmirror, $opt_vmirror );
 
 sub process_cli_options {
     GetOptions(
@@ -86,6 +87,8 @@ sub process_cli_options {
         'preshift=i'		=> \$opt_preshift,
         'extra-right-col'	=> \$opt_extra_right_col,
         'extra-bottom-row'	=> \$opt_extra_bottom_row,
+        'hmirror'		=> \$opt_hmirror,
+        'vmirror'		=> \$opt_vmirror,
     ) or show_usage;
 
     # check for mandatory options
@@ -383,12 +386,12 @@ my %sprite_output_format = (
         'asm'	=> ";; sprite '%s' definition\n;; pixel data\n;; %s\n;; %s\n",
     },
     header1 => {
-        'c'	=> "uint8_t %s_pixels[ %d ] = {\n",
-        'asm'	=> "PUBLIC %s_pixels\t;; %d bytes \n",
+        'c'	=> "uint8_t %s[ %d ] = {\n",
+        'asm'	=> "PUBLIC %s\t;; %d bytes \n",
     },
     header2 => {
         'c'	=> "",
-        'asm'	=> "%s_pixels:\n",
+        'asm'	=> "%s:\n",
     },
     comment2 => {
         'c'	=> "\t// rows: 0-%d, col: %d\n",
@@ -488,7 +491,7 @@ sub output_sprite {
 process_cli_options;
 
 ## import the PNG file, extract the region indicated and convert it into ZX color space
-my $gfx = zxgfx_extract_from_png( $opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height );
+my $gfx = zxgfx_extract_from_png( $opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height, $opt_hmirror, $opt_vmirror );
 
 ## validate max number of colors is valid in all cells
 ##   tile: fg, and bg
