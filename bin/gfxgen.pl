@@ -136,15 +136,18 @@ sub process_cli_options {
     ( $opt_symbol_name =~ m/[A-Z][A-Z0-9_]+/i ) or
         die "--symbol-name must be a valid symbol name\n";
 
-    grep { m/$opt_gfx_type/i } qw( tile sprite ) or
-        die "--gfx-type must be one of 'tile' or 'sprite'\n";
+    grep { m/$opt_gfx_type/i } qw( tile sprite sprite_mask sprite_load ) or
+        die "--gfx-type must be one of 'tile', 'sprite_mask' or 'sprite_load' (`sprite' is an alias for 'sprite_mask'\n";
     $opt_gfx_type = lc( $opt_gfx_type );
+    if ( $opt_gfx_type eq 'sprite' ) {
+        $opt_gfx_type = 'sprite_mask';
+   }
 
     if ( $opt_gfx_type eq 'tile' ) {
         grep { m/$opt_layout/i } qw( scanlines rows columns ) or
             die "--layout must be one of 'scanlines', 'rows' or 'columns' in tile mode\n";
     }
-    if ( $opt_gfx_type eq 'sprite' ) {
+    if ( $opt_gfx_type =~ /^sprite/ ) {
         grep { m/$opt_layout/i } qw( columns ) or
             die "--layout can only be 'columns' in sprite mode\n";
     }
@@ -156,7 +159,7 @@ sub process_cli_options {
         }
     }
 
-    if ( $opt_gfx_type ne 'sprite' ) {
+    if ( $opt_gfx_type !~ /^sprite/ ) {
         defined( $opt_extra_right_col ) and
             die "--extra-right-col is only valid in sprite mode\n";
         defined( $opt_extra_bottom_row ) and
@@ -397,9 +400,13 @@ my %sprite_output_format = (
         'c'	=> "\t// rows: 0-%d, col: %d\n",
         'asm'	=> "\t;; rows: 0-%d, col: %d\n",
     },
-    output1 => {
+    output1_mask => {
         'c'	=> "\t0x%02x, 0x%02x,\t\t// mask: %s   pix: %s",
         'asm'	=> "\tdb\t\$%02x,\$%02x\t\t;; mask: %s   pix: %s",
+    },
+    output1_load => {
+        'c'	=> "\t0x%02x\t\t// pix: %s",
+        'asm'	=> "\tdb\t\$%02x\t\t;; pix: %s",
     },
     comment3 => {
         'c'	=> "\t// extra right column\n",
@@ -427,6 +434,7 @@ sub mix_mask_and_pixel {
 sub output_sprite {
     my $gfx = shift;
     my $ct = $opt_code_type;
+    my $spt = $opt_gfx_type;	# either 'sprite_mask' or 'sprite_load'
 
     # preamble
     print $sprite_output_format{'preamble'}{ $ct };
@@ -451,27 +459,48 @@ sub output_sprite {
         foreach my $col ( 0 .. (zxgfx_get_width_cells( $gfx ) - 1) ) {
             printf $sprite_output_format{'comment2'}{ $ct }, (zxgfx_get_height_cells( $gfx ) - 1), $col;
             foreach my $row (0 .. (zxgfx_get_height_cells( $gfx ) - 1) ) {
-                print join("\n", map {
-                    sprintf $sprite_output_format{'output1'}{ $ct },
-                        $_->[0], $_->[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
-                } mix_mask_and_pixel( $gfx->{'cells'}[ $row ][ $col ]{'masks'}, $gfx->{'cells'}[ $row ][ $col ]{'bytes'} ) );
+                if ( $spt eq 'sprite_mask' ) {
+                    print join("\n", map {
+                        sprintf $sprite_output_format{'output1_mask'}{ $ct },
+                            $_->[0], $_->[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
+                    } mix_mask_and_pixel( $gfx->{'cells'}[ $row ][ $col ]{'masks'}, $gfx->{'cells'}[ $row ][ $col ]{'bytes'} ) );
+                }
+                if ( $spt eq 'sprite_load' ) {
+                    print join("\n", map {
+                        sprintf $sprite_output_format{'output1_load'}{ $ct }, $_, byte2graph( $_ );
+                    } @{ $gfx->{'cells'}[ $row ][ $col ]{'bytes'} } );
+                }
                 print "\n";
             }
             if ( $opt_extra_bottom_row ) {
-                print join("\n", map {
-                    sprintf $sprite_output_format{'output1'}{ $ct },
-                        $_->[0], $_->[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
-                } ( ( [ 255, 0] ) x 8 ) );
+                if ( $spt eq 'sprite_mask' ) {
+                    print join("\n", map {
+                        sprintf $sprite_output_format{'output1_mask'}{ $ct },
+                            $_->[0], $_->[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
+                    } ( ( [ 255, 0] ) x 8 ) );
+                }
+                if ( $spt eq 'sprite_load' ) {
+                    print join("\n", map {
+                        sprintf $sprite_output_format{'output1_load'}{ $ct }, $_, byte2graph( $_ );
+                    } ( ( 0 ) x 8 ) );
+                }
                 print "\n";
             }
             print "\n";
         }
         if ( $opt_extra_right_col ) {
             print $sprite_output_format{'comment3'}{ $ct };
-            print join("\n", map {
-                sprintf $sprite_output_format{'output1'}{ $ct },
-                    $_->[0], $_->[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
-            } ( ( [ 255,0 ] ) x ( ( zxgfx_get_height_cells( $gfx ) + ( $opt_extra_bottom_row ? 1 : 0 )  ) * 8 ) ) );
+            if ( $spt eq 'sprite_mask' ) {
+                print join("\n", map {
+                    sprintf $sprite_output_format{'output1_mask'}{ $ct },
+                        $_->[0], $_->[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
+                } ( ( [ 255,0 ] ) x ( ( zxgfx_get_height_cells( $gfx ) + ( $opt_extra_bottom_row ? 1 : 0 )  ) * 8 ) ) );
+            }
+            if ( $spt eq 'sprite_load' ) {
+                print join("\n", map {
+                    sprintf $sprite_output_format{'output1_load'}{ $ct }, $_, byte2graph( $_ );
+                } ( ( 0 ) x ( ( zxgfx_get_height_cells( $gfx ) + ( $opt_extra_bottom_row ? 1 : 0 )  ) * 8 ) ) );
+            }
             print "\n";
         }
     }
@@ -509,7 +538,7 @@ if ( @$errors ) {
 if ( $opt_gfx_type eq 'tile' ) {
     zxgfx_extract_tile_cells( $gfx );
     output_tiles( $gfx );
-} elsif ( $opt_gfx_type eq 'sprite' ) {
+} elsif ( $opt_gfx_type =~ /^sprite/ ) {
     zxgfx_extract_sprite_cells( $gfx, $opt_foreground, $opt_background, $opt_mask );
     output_sprite( $gfx );
 } else {

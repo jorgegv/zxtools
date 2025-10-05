@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 # reads a .c.lis file and a .map file and outputs the .c.lis file replacing
 # the offsets with the final linked addresses extracted from the map file,
