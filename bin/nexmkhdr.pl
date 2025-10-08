@@ -57,17 +57,13 @@ my (
     $help,                  $output,
 );
 
-my $num_present_banks;
-# an array of 112 elements, no more no less, with 1/0 for present/no present flag for each bank
-my @present_banks = ( 0 x 112 );
-
 GetOptions(
     "help"                    => \$help,
     "ram:i"                   => \$ram,
     "load-screen-blocks=s"    => \$load_screen_blocks,
     "border-colour=s"         => \$border_colour,
-    "sp=i"                    => \$sp,
-    "pc=i"                    => \$pc,
+    "sp=s"                    => \$sp,
+    "pc=s"                    => \$pc,
     "num-extra-files=i"       => \$num_extra_files,
     "present-banks=s"         => \$present_banks,
     "loading-bar"             => \$loading_bar,
@@ -203,12 +199,15 @@ $start_delay = $start_delay || 0;
 
 $preserve_state = $preserve_state || 0;
 
+my ( $req_core_1, $req_core_2, $req_core_3 );
 if ( defined( $required_core_version ) ) {
-    if ( $required_core_version !~ m/^\d+\.\d+\.\d+$/ ) {
+    if ( $required_core_version =~ m/^(\d+)\.(\d+)\.(\d+)$/ ) {
+        ( $req_core_1, $req_core_2, $req_core_3 ) = ( $1, $2, $3 );
+    } else {
         push @errors, "*** Error: --required-core-version requires a version number in X.Y.Z format";
     }
 } else {
-    $required_core_version = '0.0.0';
+    ( $req_core_1, $req_core_2, $req_core_3 ) = ( 0, 0, 0 );
 }
 
 if ( defined( $timex_hires_colour ) ) {
@@ -248,35 +247,67 @@ if ( defined( $file_handle_address ) ) {
     $file_handle_address = 0;
 }
 
+# parse present banks
+my $num_present_banks = 0;
+
+# an array of 112 elements, no more no less, with 1/0 for present/no present flag for each bank
+my @present_banks = ( ( 0x0 ) x 112 );
+
+# default if --present-banks is not defined
+if ( not defined( $present_banks ) ) {
+    $present_banks = "5,2,0";
+}
+
+if ( not( $present_banks =~ m/^[\d,\-]+$/ ) ) {
+    push @errors,
+        "*** Error: --present-banks must be a comma-separated list of integers, or integer ranges separated by '-'";
+}
+
+# parse --present-banks
+my @tokens = split( /,/, $present_banks );
+foreach my $token ( @tokens ) {
+    if ( $token =~ m/^(\d+)$/ ) {
+        my $bank = $1;
+        $num_present_banks++;
+        $present_banks[$bank] = 1;
+    } elsif ( $token =~ m/^(\d+)-(\d+)$/ ) {
+        my ( $start_bank, $end_bank ) = ( $1, $2 );
+        foreach my $bank ( $start_bank .. $end_bank ) {
+            $num_present_banks++;
+            $present_banks[$bank] = 1;
+        }
+    } else {
+        push @errors, "*** Error: incorrect range format in --present-banks: $token";
+    }
+}
+
 help_and_exit if @errors;
 
 # output NEX header
-my $nex_header_binary_data = pack('A4A4C4S3a112C5a3C2S',
-    'Next',
-    'V1.2',
-    ( $ram == 768 ? 0 : 1 ),
-    $num_present_banks,		# FIX
-    $load_screen_blocks,
-    $border_colour,
-    $sp,
-    $pc,
-    $num_extra_files,
-    @present_banks,		# FIX
-    $loading_bar,
-    $loading_bar_colour,
-    $bank_load_delay,
-    $start_delay,
-    $preserve_state,
-    ( split( /\./, $required_core_version ) ),
-    ( $timex_hires_colour << 3 ),
-    $entry_bank,
-    $file_handle_address,
+my $padding                = 512 - 142;
+my $nex_header_binary_data = pack(
+    "A4A4C4S3C112C5C3C2SC$padding",
+    'Next',                                   # A4
+    'V1.2',                                   # A4
+    ( $ram == 768 ? 0 : 1 ),                  # C4
+    $num_present_banks,                       #
+    $load_screen_blocks,                      #
+    $border_colour,                           #
+    $sp,                                      # S3
+    $pc,                                      #
+    $num_extra_files,                         #
+    @present_banks,                           # C112
+    $loading_bar,                             # C5
+    $loading_bar_colour,                      #
+    $bank_load_delay,                         #
+    $start_delay,                             #
+    $preserve_state,                          #
+    $req_core_1, $req_core_2, $req_core_3,    # C3
+    ( $timex_hires_colour << 3 ),             # C2
+    $entry_bank,                              #
+    $file_handle_address,                     # S
+    ( ( 0xEF ) x $padding ),                  # C$padding
 );
-# say "WIP: fake data is written!";
 
-if ( defined( $output ) ) {
-    write_file( $output, { binmode => ':raw' }, $nex_header_binary_data );
-} else {
-    binmode STDOUT;
-    print $nex_header_binary_data;
-}
+write_file( $output, { binmode => ':raw' }, $nex_header_binary_data )
+    or die "*** Could not write $output\n";
