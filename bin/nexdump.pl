@@ -78,7 +78,7 @@ sub output_nex_info {
           $header->{'start_delay'} ? "frames" : "(no delay)";
      printf "Preserve Next state: %s\n", $header->{'preserve_state'} ? "Yes" : "No";
      printf "Required core version: %s\n", $header->{'required_core_version'};
-     printf "Hi-Res colour: 0x%02x (%s)\n", $header->{'timex_hires_colour'},
+     printf "Timex Hi-Res colour: 0x%02x (%s)\n", $header->{'timex_hires_colour'},
           $zx_colours[ $header->{'timex_hires_colour'} >> 3 ];
      printf "Initial bank mapped at 0xc000: %d\n", $header->{'entry_bank'};
      printf "File handle address: 0x%04x (%d) %s\n", $header->{'file_handle_address'}, $header->{'file_handle_address'},

@@ -56,6 +56,11 @@ my (
     $required_core_version, $timex_hires_colour, $entry_bank,    $file_handle_address,
     $help,                  $output,
 );
+
+my $num_present_banks;
+# an array of 112 elements, no more no less, with 1/0 for present/no present flag for each bank
+my @present_banks = ( 0 x 112 );
+
 GetOptions(
     "help"                    => \$help,
     "ram:i"                   => \$ram,
@@ -246,12 +251,32 @@ if ( defined( $file_handle_address ) ) {
 help_and_exit if @errors;
 
 # output NEX header
-my $nex_header = 'Next';    # FIX: pack(...)
-say "WIP: fake data is written!";
+my $nex_header_binary_data = pack('A4A4C4S3a112C5a3C2S',
+    'Next',
+    'V1.2',
+    ( $ram == 768 ? 0 : 1 ),
+    $num_present_banks,		# FIX
+    $load_screen_blocks,
+    $border_colour,
+    $sp,
+    $pc,
+    $num_extra_files,
+    @present_banks,		# FIX
+    $loading_bar,
+    $loading_bar_colour,
+    $bank_load_delay,
+    $start_delay,
+    $preserve_state,
+    ( split( /\./, $required_core_version ) ),
+    ( $timex_hires_colour << 3 ),
+    $entry_bank,
+    $file_handle_address,
+);
+# say "WIP: fake data is written!";
 
 if ( defined( $output ) ) {
-    write_file( $output, { binmode => ':raw' }, $nex_header );
+    write_file( $output, { binmode => ':raw' }, $nex_header_binary_data );
 } else {
     binmode STDOUT;
-    print $nex_header;
+    print $nex_header_binary_data;
 }
