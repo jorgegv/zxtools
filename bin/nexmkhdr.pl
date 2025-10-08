@@ -90,44 +90,46 @@ if ( not defined( $output ) ) {
 }
 
 my %lsb_values = (
-    'PAL' => 0x80,
-    'HIC' => 0x10,
-    'HIR' => 0x08,
-    'LOR' => 0x04,
-    'ULA' => 0x02,
-    'L2'=> 0x01,
+    'PAL'  => 0x80,
+    'HIC'  => 0x10,
+    'HIR'  => 0x08,
+    'LOR'  => 0x04,
+    'ULA'  => 0x02,
+    'L2'   => 0x01,
     'none' => 0,
 );
 if ( defined( $load_screen_blocks ) ) {
-    if ( exists( $lsb_values{ $load_screen_blocks } ) ) {
-        $load_screen_blocks = $lsb_values{ $load_screen_blocks };
+    if ( exists( $lsb_values{$load_screen_blocks} ) ) {
+        $load_screen_blocks = $lsb_values{$load_screen_blocks};
     } else {
-        push @errors, "*** Error: --load-screen-blocks value must be one of " . join(", ", keys %lsb_values );
+        push @errors, "*** Error: --load-screen-blocks value must be one of " . join( ", ", keys %lsb_values );
     }
 } else {
     $load_screen_blocks = $lsb_values{'none'};
 }
 
 my %zx_colours = (
-    'BLACK' => 0,
-    'BLUE' => 1,
-    'RED' => 2,
+    'BLACK'   => 0,
+    'BLUE'    => 1,
+    'RED'     => 2,
     'MAGENTA' => 3,
-    'GREEN' => 4,
-    'CYAN' => 5,
-    'YELLOW' => 6,
-    'WHITE'=> 7,
+    'GREEN'   => 4,
+    'CYAN'    => 5,
+    'YELLOW'  => 6,
+    'WHITE'   => 7,
 );
 if ( defined( $border_colour ) ) {
     if ( $border_colour =~ m/^\d+$/ ) {
         if ( ( $border_colour < 0 ) or ( $border_colour > 7 ) ) {
-            push @errors, "*** Error: --border-colour value must be an integer between 0-7 or one of " . join(", ", keys %zx_colours );
+            push @errors, "*** Error: --border-colour value must be an integer between 0-7 or one of "
+                . join( ", ", keys %zx_colours );
         }
     } else {
         if ( exists( $zx_colours{ uc( $border_colour ) } ) ) {
             $border_colour = $zx_colours{ uc( $border_colour ) };
         } else {
-            push @errors, "*** Error: --border-colour value must be an integer between 0-7 or one of " . join(", ", keys %zx_colours );
+            push @errors, "*** Error: --border-colour value must be an integer between 0-7 or one of "
+                . join( ", ", keys %zx_colours );
         }
     }
 } else {
@@ -175,13 +177,15 @@ $loading_bar = $loading_bar || 0;
 if ( defined( $loading_bar_colour ) ) {
     if ( $loading_bar_colour =~ m/^\d+$/ ) {
         if ( ( $loading_bar_colour < 0 ) or ( $loading_bar_colour > 7 ) ) {
-            push @errors, "*** Error: --border-colour value must be an integer between 0-7 or one of " . join(", ", keys %zx_colours );
+            push @errors, "*** Error: --border-colour value must be an integer between 0-7 or one of "
+                . join( ", ", keys %zx_colours );
         }
     } else {
         if ( exists( $zx_colours{ uc( $loading_bar_colour ) } ) ) {
             $loading_bar_colour = $zx_colours{ uc( $loading_bar_colour ) };
         } else {
-            push @errors, "*** Error: --loading-bar-colour value must be an integer between 0-7 or one of " . join(", ", keys %zx_colours );
+            push @errors, "*** Error: --loading-bar-colour value must be an integer between 0-7 or one of "
+                . join( ", ", keys %zx_colours );
         }
     }
 } else {
@@ -205,13 +209,15 @@ if ( defined( $required_core_version ) ) {
 if ( defined( $timex_hires_colour ) ) {
     if ( $timex_hires_colour =~ m/^\d+$/ ) {
         if ( ( $timex_hires_colour < 0 ) or ( $timex_hires_colour > 7 ) ) {
-            push @errors, "*** Error: --timex-hires-colour value must be an integer between 0-7 or one of " . join(", ", keys %zx_colours );
+            push @errors, "*** Error: --timex-hires-colour value must be an integer between 0-7 or one of "
+                . join( ", ", keys %zx_colours );
         }
     } else {
         if ( exists( $zx_colours{ uc( $timex_hires_colour ) } ) ) {
             $timex_hires_colour = $zx_colours{ uc( $timex_hires_colour ) };
         } else {
-            push @errors, "*** Error: --loading-bar-colour value must be an integer between 0-7 or one of " . join(", ", keys %zx_colours );
+            push @errors, "*** Error: --loading-bar-colour value must be an integer between 0-7 or one of "
+                . join( ", ", keys %zx_colours );
         }
     }
 } else {
