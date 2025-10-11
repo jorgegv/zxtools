@@ -59,12 +59,12 @@ sub output_nex_info {
      printf "RAM required: %s\n", $header->{'ram'} ? "1720k" : "768k";
      printf "Number of banks present: %d\n", $header->{'num_banks'};
      print  "Loading screen blocks:\n";
-     printf "  Palette  : %s\n", $header->{'load_screen_blocks'} && 0x80 ? "Yes" : "No";
-     printf "  Hi-Colour: %s\n", $header->{'load_screen_blocks'} && 0x10 ? "Yes" : "No";
-     printf "  Hi-Res   : %s\n", $header->{'load_screen_blocks'} && 0x08 ? "Yes" : "No";
-     printf "  Lo-Res   : %s\n", $header->{'load_screen_blocks'} && 0x04 ? "Yes" : "No";
-     printf "  ULA      : %s\n", $header->{'load_screen_blocks'} && 0x02 ? "Yes" : "No";
-     printf "  Layer2   : %s\n", $header->{'load_screen_blocks'} && 0x01 ? "Yes" : "No";
+     printf "  Palette  : %s\n", $header->{'load_screen_blocks'} & 0x80 ? "Yes" : "No";
+     printf "  Hi-Colour: %s\n", $header->{'load_screen_blocks'} & 0x10 ? "Yes" : "No";
+     printf "  Hi-Res   : %s\n", $header->{'load_screen_blocks'} & 0x08 ? "Yes" : "No";
+     printf "  Lo-Res   : %s\n", $header->{'load_screen_blocks'} & 0x04 ? "Yes" : "No";
+     printf "  ULA      : %s\n", $header->{'load_screen_blocks'} & 0x02 ? "Yes" : "No";
+     printf "  Layer2   : %s\n", $header->{'load_screen_blocks'} & 0x01 ? "Yes" : "No";
      printf "Border colour: 0x%02x (%s)\n", $header->{'border_colour'},
           $zx_colours[ $header->{'border_colour'} ];
      printf "SP register: 0x%04x (%d)\n", $header->{'sp'}, $header->{'sp'};
