@@ -59,7 +59,7 @@ sub output_nex_info {
      printf "RAM required: %s\n", $header->{'ram'} ? "1720k" : "768k";
      printf "Number of banks present: %d\n", $header->{'num_banks'};
      print  "Loading screen blocks:\n";
-     printf "  Palette  : %s\n", $header->{'load_screen_blocks'} & 0x80 ? "Yes" : "No";
+     printf "  Palette  : %s\n", $header->{'load_screen_blocks'} & 0x80 ? "No" : "Yes";
      printf "  Hi-Colour: %s\n", $header->{'load_screen_blocks'} & 0x10 ? "Yes" : "No";
      printf "  Hi-Res   : %s\n", $header->{'load_screen_blocks'} & 0x08 ? "Yes" : "No";
      printf "  Lo-Res   : %s\n", $header->{'load_screen_blocks'} & 0x04 ? "Yes" : "No";

@@ -20,7 +20,7 @@ Options:
 
     --help			Shows this help
     --ram			Sets RAM size in kB (768 or 1792) [default: 768]
-    --load-screen-blocks	One of: PAL, HIC, HIR, LOR, ULA, L2, none [default: none]
+    --load-screen-blocks	One of: HIC, HIR, LOR, ULA, L2, none [default: none]
     --border-colour		Colour of the border ;-) [default: BLACK]
     --sp			Initial Stack Pointer [mandatory]
     --pc			Entry point address [mandatory]
@@ -91,7 +91,6 @@ if ( not defined( $output ) ) {
 }
 
 my %lsb_values = (
-    'PAL'  => 0x80,
     'HIC'  => 0x10,
     'HIR'  => 0x08,
     'LOR'  => 0x04,
@@ -108,6 +107,7 @@ if ( defined( $load_screen_blocks ) ) {
 } else {
     $load_screen_blocks = $lsb_values{'none'};
 }
+$load_screen_blocks |= 0x80;	# for the moment, no palette allowed
 
 my %zx_colours = (
     'BLACK'   => 0,
