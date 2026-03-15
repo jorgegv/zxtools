@@ -50,6 +50,7 @@ Options:
     -p, --preshift <1|2|4>
         --extra-right-col - generate sprite extra empty right column (default: no)
         --extra-bottom-row - generate sprite extra empty bottom row, SP1 style (default: no)
+        --extra-top-rows - generate 7 transparent pre-rows before label for safe sub-cell y-scroll (default: no)
         --hmirror - mirror graphic data horizontally
         --vmirror - mirror graphic data vertically
 EOF_USAGE
@@ -66,7 +67,7 @@ EOF_USAGE
 my ($opt_input, $opt_xpos, $opt_ypos, $opt_width, $opt_height, $opt_mask,
     $opt_foreground, $opt_background, $opt_code_type, $opt_symbol_name,
     $opt_layout, $opt_gfx_type, $opt_preshift, $opt_extra_right_col,
-    $opt_extra_bottom_row, $opt_row, $opt_col, $opt_hmirror, $opt_vmirror );
+    $opt_extra_bottom_row, $opt_extra_top_rows, $opt_row, $opt_col, $opt_hmirror, $opt_vmirror );
 
 sub process_cli_options {
     GetOptions(
@@ -87,6 +88,7 @@ sub process_cli_options {
         'preshift=i'		=> \$opt_preshift,
         'extra-right-col'	=> \$opt_extra_right_col,
         'extra-bottom-row'	=> \$opt_extra_bottom_row,
+        'extra-top-rows'	=> \$opt_extra_top_rows,
         'hmirror'		=> \$opt_hmirror,
         'vmirror'		=> \$opt_vmirror,
     ) or show_usage;
@@ -164,6 +166,8 @@ sub process_cli_options {
             die "--extra-right-col is only valid in sprite mode\n";
         defined( $opt_extra_bottom_row ) and
             die "--extra-bottom-row is only valid in sprite mode\n";
+        defined( $opt_extra_top_rows ) and
+            die "--extra-top-rows is only valid in sprite mode\n";
     }
 
     # override xpos and ypos with col and row
@@ -385,8 +389,8 @@ my %sprite_output_format = (
         'asm'	=> "\tsection data_compiler\n\n",
     },
     comment1 => {
-        'c'	=> "// sprite '%s' definition\n// pixel data\n// %s\n// %s\n",
-        'asm'	=> ";; sprite '%s' definition\n;; pixel data\n;; %s\n;; %s\n",
+        'c'	=> "// sprite '%s' definition\n// pixel data\n// %s\n// %s\n// %s\n",
+        'asm'	=> ";; sprite '%s' definition\n;; pixel data\n;; %s\n;; %s\n;; %s\n",
     },
     header1 => {
         'c'	=> "uint8_t %s[ %d ] = {\n",
@@ -444,14 +448,37 @@ sub output_sprite {
         $opt_symbol_name,
         ( $opt_extra_bottom_row ? 'with extra blank bottom row' : '' ),
         ( $opt_extra_right_col ? 'with extra blank right column' : '' ),
+        ( $opt_extra_top_rows ? 'with 7 transparent pre-rows before label' : '' ),
     );
-    printf( $sprite_output_format{'header1'}{ $ct },
-        $opt_symbol_name,
-        ( zxgfx_get_width_cells( $gfx ) + ( $opt_extra_right_col ? 1 : 0 ) ) * 
-        ( zxgfx_get_height_cells( $gfx ) + ( $opt_extra_bottom_row ? 1 : 0 )  ) * 8 * 2
-    );
-    if ( $sprite_output_format{'header2'}{ $ct } ) {
-        printf $sprite_output_format{'header2'}{ $ct }, $opt_symbol_name;
+    my $sprite_byte_count =
+        ( zxgfx_get_width_cells( $gfx ) + ( $opt_extra_right_col ? 1 : 0 ) ) *
+        ( zxgfx_get_height_cells( $gfx ) + ( $opt_extra_bottom_row ? 1 : 0 )  ) * 8 * 2;
+    # extra top rows: transparent pre-rows emitted BEFORE the PUBLIC+label so that
+    # pix_ptr = sp->pixels - (ypos%8)*2 always lands on valid transparent data.
+    # PUBLIC must appear immediately before the label in z80asm, so we emit pre-rows
+    # first (unlabeled), then PUBLIC+label together.
+    if ( $opt_extra_top_rows && $ct eq 'asm' ) {
+        printf( "\t;; %s: %d bytes\n", $opt_symbol_name, $sprite_byte_count );
+        print "\t;; 7 transparent pre-rows before label (for safe sub-cell y positioning)\n";
+        if ( $spt eq 'sprite_mask' ) {
+            print join("\n", map {
+                sprintf $sprite_output_format{'output1_mask'}{ $ct },
+                    $_->[0], $_->[1], byte2graph( $_->[0] ), byte2graph( $_->[1] );
+            } ( ( [ 255, 0 ] ) x 7 ) );
+            print "\n";
+        }
+        if ( $spt eq 'sprite_load' ) {
+            print join("\n", map {
+                sprintf $sprite_output_format{'output1_load'}{ $ct }, $_, byte2graph( $_ );
+            } ( ( 0 ) x 7 ) );
+            print "\n";
+        }
+        printf( "PUBLIC %s\n%s:\n", $opt_symbol_name, $opt_symbol_name );
+    } else {
+        printf( $sprite_output_format{'header1'}{ $ct }, $opt_symbol_name, $sprite_byte_count );
+        if ( $sprite_output_format{'header2'}{ $ct } ) {
+            printf $sprite_output_format{'header2'}{ $ct }, $opt_symbol_name;
+        }
     }
 
     # pixels: data
